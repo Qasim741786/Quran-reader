@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b302b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Quran" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="assets/icon-180.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Quran | Read with meaning</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <a class="brand" href="#reader" aria-label="Quran home">
+          <span class="brand-mark">۝</span><span>Quran</span>
+        </a>
+        <nav>
+          <a class="nav-item active" href="#reader"><span>⌂</span> Read</a>
+          <a class="nav-item" href="#surahs"><span>☷</span> Surahs</a>
+          <a class="nav-item" href="#bookmarks"><span>♧</span> Bookmarks</a>
+          <a class="nav-item" href="#settings"><span>⚙</span> Settings</a>
+        </nav>
+        <div class="continue-card">
+          <p>CONTINUE READING</p>
+          <strong id="last-surah">Al-Fatihah</strong>
+          <span id="last-verse">Verse 1</span>
+          <div class="progress"><i></i></div>
+          <button id="resume">Resume</button>
+        </div>
+        <p class="sidebar-note">Read with reflection</p>
+      </aside>
+
+      <main id="reader">
+        <header class="topbar">
+          <button class="icon-button mobile-menu" aria-label="Open menu">☰</button>
+          <div class="crumb"><span>Quran</span><b>/</b><strong id="crumb-surah">Al-Fatihah</strong></div>
+          <div class="header-actions">
+            <button class="icon-button search-trigger" aria-label="Search chapters">⌕</button>
+            <button class="avatar" aria-label="Profile">Q</button>
+          </div>
+        </header>
+
+        <section class="reader-wrap">
+          <section class="library" id="surahs">
+            <div class="library-top"><div><p class="eyebrow">THE HOLY QURAN</p><h2>Choose a Surah</h2></div><label class="search"><span>⌕</span><input id="surah-search" type="search" placeholder="Search name or number" /></label></div>
+            <div class="surah-list" id="surah-list" aria-label="All Quran chapters"><div class="loader">Loading all surahs…</div></div>
+          </section>
+          <div class="surah-heading">
+            <div class="surah-number" id="surah-number">01</div>
+            <div>
+              <p class="eyebrow" id="surah-meta">MAKKI · 7 VERSES</p>
+              <h1 id="surah-name">Al-Fatihah</h1>
+              <p class="subtitle" id="surah-english">The Opening</p>
+            </div>
+            <button class="listen-button" aria-label="Listen to Al-Fatihah"><span>▶</span> Listen</button>
+          </div>
+
+          <section class="controls" aria-label="Reading controls">
+            <div class="toggle-group" role="group" aria-label="Translation visibility">
+              <button class="translation-toggle selected" data-mode="both">Arabic & translation</button>
+              <button class="translation-toggle" data-mode="arabic">Arabic only</button>
+            </div>
+            <div class="type-controls">
+              <span>Text size</span>
+              <button class="size-button" data-size="down" aria-label="Decrease Arabic text size">A−</button>
+              <button class="size-button" data-size="up" aria-label="Increase Arabic text size">A+</button>
+            </div>
+          </section>
+
+          <article class="quran-page" aria-label="Surah Al-Fatihah">
+            <div class="ornament" id="bismillah"><span></span><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b><span></span></div>
+            <div class="verses" id="verses"><div class="loader">Opening the Quran…</div></div>
+          </article>
+          <div class="source-note">Arabic: Uthmani script · Translation: Sahih International</div>
+          <div class="chapter-nav"><button id="previous-surah">← Previous</button><button id="next-surah">Next →</button></div>
+        </section>
+      </main>
+    </div>
+    <template id="verse-template"><section class="verse"><div class="verse-top"><button class="verse-number"></button><button class="bookmark" aria-label="Bookmark verse">♡</button></div><p class="arabic" dir="rtl" lang="ar"></p><p class="translation"></p></section></template>
+    <script>
+      // Browsers treat network calls more reliably when this app is served locally.
+      if (location.protocol === 'file:') location.replace('http://127.0.0.1:4173');
+    </script>
+    <script src="app.js?v=4"></script>
+    <script>
+      if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
+    </script>
+  </body>
+</html>
