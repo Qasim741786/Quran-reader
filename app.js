@@ -8,7 +8,7 @@ let current = Number(localStorage.getItem('quran-last-surah')) || 1;
 let size = 42;
 let activeLibrary = localStorage.getItem('quran-library') || 'surahs';
 let libraryOpen = localStorage.getItem('quran-library-open') !== 'false';
-const TAJWEED_SETTING_VERSION = 'v2';
+const TAJWEED_SETTING_VERSION = 'v3';
 if (localStorage.getItem('quran-tajweed-setting-version') !== TAJWEED_SETTING_VERSION) {
   localStorage.setItem('quran-tajweed-setting-version', TAJWEED_SETTING_VERSION);
   localStorage.setItem('quran-tajweed', 'true');
