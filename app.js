@@ -123,10 +123,26 @@ function renderArabic(element, text, wordRules) {
     word.textContent = part;
     if (tajweedEnabled && wordRules[wordIndex]?.length) {
       word.className = wordRules[wordIndex].map((rule) => `tajweed-${rule}`).join(' ');
+      const colour = tajweedColour(wordRules[wordIndex]);
+      if (colour) word.style.color = colour;
     }
     wordIndex += 1;
     element.append(word);
   });
+}
+
+function tajweedColour(rules) {
+  const joined = rules.join(' ');
+  const dark = document.body.classList.contains('dark-mode');
+  if (joined.includes('madda')) return dark ? '#68b9ff' : '#2675b6';
+  if (joined.includes('ghunnah') || joined.includes('idgham')) return dark ? '#72e0a8' : '#1d9064';
+  if (joined.includes('ikhafa')) return dark ? '#ffad78' : '#bd6334';
+  if (joined.includes('iqlab')) return dark ? '#e69de0' : '#9a438b';
+  if (joined.includes('qalaqah')) return dark ? '#ff8d8d' : '#bd4040';
+  if (joined.includes('ham_wasl')) return dark ? '#73ceec' : '#075d87';
+  if (joined.includes('laam_shamsiyah')) return dark ? '#e1bc72' : '#8c692e';
+  if (joined.includes('slnt')) return dark ? '#aab3ae' : '#929b96';
+  return '';
 }
 
 function renderTajweed(element, text, annotations) {
@@ -217,5 +233,9 @@ $('#theme-toggle').onclick = () => {
   localStorage.setItem('quran-dark-mode', enabled);
   $('#theme-toggle').textContent = enabled ? '☀' : '☾';
   $('#theme-toggle').setAttribute('aria-label', enabled ? 'Disable dark mode' : 'Enable dark mode');
+  if (chapters.length) {
+    const chapter = chapters[current - 1];
+    renderVerses({ arabic: chapter.arabic, translation: chapter.translation, tajweed: chapter.tajweed });
+  }
 };
 initialise();
