@@ -40,15 +40,19 @@
           <div class="crumb"><span>Quran</span><b>/</b><strong id="crumb-surah">Al-Fatihah</strong></div>
           <div class="header-actions">
             <button class="icon-button search-trigger" aria-label="Search chapters">⌕</button>
+            <button class="icon-button theme-toggle" id="theme-toggle" aria-label="Enable dark mode">☾</button>
             <button class="avatar" aria-label="Profile">Q</button>
           </div>
         </header>
 
         <section class="reader-wrap">
           <section class="library" id="surahs">
-            <div class="library-top"><div><p class="eyebrow">THE HOLY QURAN</p><h2>Choose a Surah</h2></div><label class="search"><span>⌕</span><input id="surah-search" type="search" placeholder="Search name or number" /></label></div>
+            <div class="library-top"><div><p class="eyebrow">THE HOLY QURAN</p><h2 id="library-title">Choose a Surah</h2></div><label class="search"><span>⌕</span><input id="surah-search" type="search" placeholder="Search name or number" /></label></div>
+            <div class="library-switch" role="tablist" aria-label="Quran navigation"><button class="library-tab active" data-library="surahs" role="tab">Surahs</button><button class="library-tab" data-library="juz" role="tab">Juz</button></div>
             <div class="surah-list" id="surah-list" aria-label="All Quran chapters"><div class="loader">Loading all surahs…</div></div>
+            <div class="juz-list" id="juz-list" aria-label="All Quran juz"></div>
           </section>
+          <div class="reader-shortcuts"><button class="library-toggle" id="library-toggle" aria-expanded="true"><span>☷</span> Browse Quran</button><span class="reading-hint">Surahs & Juz</span></div>
           <div class="surah-heading">
             <div class="surah-number" id="surah-number">01</div>
             <div>
@@ -65,6 +69,7 @@
               <button class="translation-toggle" data-mode="arabic">Arabic only</button>
             </div>
             <div class="type-controls">
+              <button class="tajweed-toggle" id="tajweed-toggle" aria-pressed="true">Tajweed colours</button>
               <span>Text size</span>
               <button class="size-button" data-size="down" aria-label="Decrease Arabic text size">A−</button>
               <button class="size-button" data-size="up" aria-label="Increase Arabic text size">A+</button>
@@ -90,7 +95,17 @@
         window.quranOfflineReady = navigator.serviceWorker.register('/service-worker.js', {
           scope: '/',
           updateViaCache: 'none',
-        }).then(() => navigator.serviceWorker.ready);
+        }).then((registration) => {
+          registration.update();
+          return navigator.serviceWorker.ready;
+        });
+        let refreshedForWorker = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshedForWorker) {
+            refreshedForWorker = true;
+            window.location.reload();
+          }
+        });
       }
     </script>
     <script src="/app.js"></script>

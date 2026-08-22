@@ -22,15 +22,26 @@ const chapters = sources[0].data.surahs.map((surah, index) => {
   };
 });
 
+function tajweedRulesByWord(markup) {
+  const marked = markup
+    .replace(/<span class=end>.*?<\/span>/g, '')
+    .replace(/<tajweed class=([^ >]+)>/g, '⟦$1⟧')
+    .replace(/<\/tajweed>/g, '⟧');
+  return marked.split(/\s+/).filter(Boolean).map((word) =>
+    [...word.matchAll(/⟦([^⟧]+)⟧/g)].map((match) => match[1])
+  );
+}
+
 for (let start = 1; start <= 114; start += 6) {
   const batch = await Promise.all(Array.from({ length: Math.min(6, 115 - start) }, async (_, offset) => {
     const number = start + offset;
-    const response = await fetch(`https://api.quran.com/api/v4/verses/by_chapter/${number}?fields=text_indopak&per_page=300`);
+    const response = await fetch(`https://api.quran.com/api/v4/verses/by_chapter/${number}?fields=text_indopak,text_uthmani_tajweed&per_page=300`);
     if (!response.ok) throw new Error(`Could not download IndoPak text for surah ${number}.`);
     return { number, verses: (await response.json()).verses };
   }));
   batch.forEach(({ number, verses }) => {
     chapters[number - 1].arabic = verses.map((verse) => verse.text_indopak);
+    chapters[number - 1].tajweed = verses.map((verse) => tajweedRulesByWord(verse.text_uthmani_tajweed));
   });
 }
 

@@ -6,6 +6,15 @@ const template = $('#verse-template');
 let chapters = [];
 let current = Number(localStorage.getItem('quran-last-surah')) || 1;
 let size = 42;
+let activeLibrary = localStorage.getItem('quran-library') || 'surahs';
+let libraryOpen = localStorage.getItem('quran-library-open') !== 'false';
+const TAJWEED_SETTING_VERSION = 'v2';
+if (localStorage.getItem('quran-tajweed-setting-version') !== TAJWEED_SETTING_VERSION) {
+  localStorage.setItem('quran-tajweed-setting-version', TAJWEED_SETTING_VERSION);
+  localStorage.setItem('quran-tajweed', 'true');
+}
+let tajweedEnabled = localStorage.getItem('quran-tajweed') !== 'false';
+const juzStarts = [[1,1],[2,142],[2,253],[3,93],[4,24],[4,148],[5,82],[6,111],[7,88],[8,41],[9,93],[11,6],[12,53],[15,1],[17,1],[18,75],[21,1],[23,1],[25,21],[27,56],[29,46],[33,31],[36,28],[39,32],[41,47],[46,1],[51,31],[58,1],[67,1],[78,1]];
 
 function renderList(filter = '') {
   const needle = filter.toLowerCase();
@@ -19,7 +28,44 @@ function renderList(filter = '') {
   });
 }
 
-async function loadSurah(number) {
+function renderJuzList(filter = '') {
+  const needle = filter.toLowerCase();
+  const juzList = $('#juz-list');
+  juzList.innerHTML = '';
+  juzStarts.forEach(([surahNumber, ayahNumber], index) => {
+    const chapter = chapters[surahNumber - 1];
+    const label = `Juz ${index + 1} ${chapter.englishName} ${surahNumber}:${ayahNumber}`;
+    if (!label.toLowerCase().includes(needle)) return;
+    const button = document.createElement('button');
+    button.className = 'juz-card';
+    button.innerHTML = `<span class="juz-number">${String(index + 1).padStart(2, '0')}</span><span><strong>Juz ${index + 1}</strong><small>Starts at ${chapter.englishName}, verse ${ayahNumber}</small></span><span class="card-arabic" dir="rtl">الجزء ${index + 1}</span>`;
+    button.onclick = () => loadSurah(surahNumber, ayahNumber);
+    juzList.append(button);
+  });
+}
+
+function switchLibrary(kind) {
+  activeLibrary = kind;
+  localStorage.setItem('quran-library', kind);
+  const isSurahs = kind === 'surahs';
+  $('#surah-list').hidden = !isSurahs;
+  $('#juz-list').hidden = isSurahs;
+  $('#library-title').textContent = isSurahs ? 'Choose a Surah' : 'Choose a Juz';
+  $('#surah-search').placeholder = isSurahs ? 'Search name or number' : 'Search juz number or surah';
+  $$('.library-tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.library === kind));
+  (isSurahs ? renderList : renderJuzList)($('#surah-search').value);
+}
+
+function setLibraryOpen(open, shouldScroll = false) {
+  libraryOpen = open;
+  localStorage.setItem('quran-library-open', open);
+  $('#surahs').classList.toggle('collapsed', !open);
+  $('#library-toggle').setAttribute('aria-expanded', open);
+  $('#library-toggle').innerHTML = open ? '<span>×</span> Close browser' : '<span>☷</span> Browse Quran';
+  if (open && shouldScroll) $('#surahs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function loadSurah(number, targetAyah = 1, collapseLibrary = true) {
   current = number;
   localStorage.setItem('quran-last-surah', number);
   const chapter = chapters[number - 1];
@@ -30,23 +76,26 @@ async function loadSurah(number) {
   $('#surah-english').textContent = chapter.englishNameTranslation;
   $('#surah-meta').textContent = `${chapter.revelationType.toUpperCase()} · ${chapter.arabic.length} VERSES`;
   $('#last-surah').textContent = chapter.englishName;
-  $('#last-verse').textContent = 'Verse 1';
+  $('#last-verse').textContent = `Verse ${targetAyah}`;
   $('#previous-surah').disabled = number === 1;
   $('#next-surah').disabled = number === 114;
   $('#bismillah').style.display = number === 9 ? 'none' : 'flex';
+  if (collapseLibrary) setLibraryOpen(false);
   renderList($('#surah-search').value);
   verses.innerHTML = '<div class="loader">Opening the Quran…</div>';
   $('#reader').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  renderVerses({ arabic: chapter.arabic, translation: chapter.translation });
+  renderVerses({ arabic: chapter.arabic, translation: chapter.translation, tajweed: chapter.tajweed });
+  if (targetAyah > 1) requestAnimationFrame(() => document.getElementById(`ayah-${targetAyah}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
 }
 
 function renderVerses(data) {
   verses.innerHTML = '';
   data.arabic.forEach((ayah, index) => {
     const item = template.content.cloneNode(true);
+    $('.verse', item).id = `ayah-${index + 1}`;
     $('.verse-number', item).textContent = index + 1;
-    $('.arabic', item).textContent = ayah;
+    renderArabic($('.arabic', item), ayah, data.tajweed?.[index] || []);
     $('.translation', item).textContent = data.translation[index] || '';
     const bookmark = $('.bookmark', item);
     const key = `quran-bookmark-${current}-${index + 1}`;
@@ -58,6 +107,25 @@ function renderVerses(data) {
       saved ? localStorage.setItem(key, '1') : localStorage.removeItem(key);
     };
     verses.append(item);
+  });
+}
+
+function renderArabic(element, text, wordRules) {
+  const parts = text.split(/(\s+)/u);
+  let wordIndex = 0;
+  parts.forEach((part) => {
+    if (!part) return;
+    if (/^\s+$/u.test(part)) {
+      element.append(document.createTextNode(part));
+      return;
+    }
+    const word = document.createElement('span');
+    word.textContent = part;
+    if (tajweedEnabled && wordRules[wordIndex]?.length) {
+      word.className = wordRules[wordIndex].map((rule) => `tajweed-${rule}`).join(' ');
+    }
+    wordIndex += 1;
+    element.append(word);
   });
 }
 
@@ -103,7 +171,10 @@ async function initialise() {
     if (!response.ok) throw new Error('Offline Quran data is missing');
     chapters = (await response.json()).chapters;
     renderList();
-    loadSurah(current);
+    renderJuzList();
+    switchLibrary(activeLibrary);
+    setLibraryOpen(libraryOpen);
+    loadSurah(current, 1, false);
   } catch {
     list.innerHTML = '<div class="loader">Offline Quran data is unavailable. Please reload the app.</div>';
     verses.innerHTML = '<div class="loader">The local Quran file could not be opened.</div>';
@@ -120,10 +191,31 @@ $$('.size-button').forEach((button) => button.onclick = () => {
   size = Math.max(30, Math.min(58, size));
   document.documentElement.style.setProperty('--arabic-size', `${size}px`);
 });
-$('#surah-search').oninput = (event) => renderList(event.target.value);
+$('#surah-search').oninput = (event) => (activeLibrary === 'surahs' ? renderList : renderJuzList)(event.target.value);
+$$('.library-tab').forEach((tab) => tab.onclick = () => switchLibrary(tab.dataset.library));
 $('.search-trigger').onclick = () => { location.hash = 'surahs'; $('#surah-search').focus(); };
 $('.mobile-menu').onclick = () => $('.sidebar').classList.toggle('open');
 $('#previous-surah').onclick = () => loadSurah(current - 1);
 $('#next-surah').onclick = () => loadSurah(current + 1);
 $('#resume').onclick = () => loadSurah(current);
+$('#library-toggle').onclick = () => setLibraryOpen(!libraryOpen, true);
+$('#tajweed-toggle').classList.toggle('selected', tajweedEnabled);
+$('#tajweed-toggle').setAttribute('aria-pressed', tajweedEnabled);
+$('#tajweed-toggle').onclick = () => {
+  tajweedEnabled = !tajweedEnabled;
+  localStorage.setItem('quran-tajweed', tajweedEnabled);
+  $('#tajweed-toggle').classList.toggle('selected', tajweedEnabled);
+  $('#tajweed-toggle').setAttribute('aria-pressed', tajweedEnabled);
+  loadSurah(current);
+};
+const darkMode = localStorage.getItem('quran-dark-mode') === 'true';
+document.body.classList.toggle('dark-mode', darkMode);
+$('#theme-toggle').textContent = darkMode ? '☀' : '☾';
+$('#theme-toggle').setAttribute('aria-label', darkMode ? 'Disable dark mode' : 'Enable dark mode');
+$('#theme-toggle').onclick = () => {
+  const enabled = document.body.classList.toggle('dark-mode');
+  localStorage.setItem('quran-dark-mode', enabled);
+  $('#theme-toggle').textContent = enabled ? '☀' : '☾';
+  $('#theme-toggle').setAttribute('aria-label', enabled ? 'Disable dark mode' : 'Enable dark mode');
+};
 initialise();

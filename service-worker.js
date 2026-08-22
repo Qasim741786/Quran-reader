@@ -1,5 +1,5 @@
 /* Offline-first PWA cache. Bump this version whenever bundled files change. */
-const CACHE_VERSION = 'quran-reader-v3';
+const CACHE_VERSION = 'quran-reader-v9';
 const CACHE_NAME = `${CACHE_VERSION}-precache`;
 const CACHE_PREFIX = 'quran-reader-';
 const APP_SHELL = '/index.html';
