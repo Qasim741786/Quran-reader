@@ -67,6 +67,7 @@
             <div class="toggle-group" role="group" aria-label="Translation visibility">
               <button class="translation-toggle selected" data-mode="both">Arabic & translation</button>
               <button class="translation-toggle" data-mode="arabic">Arabic only</button>
+              <button class="translation-toggle" data-mode="tafsir">Tafsir</button>
             </div>
             <div class="type-controls">
               <button class="tajweed-toggle" id="tajweed-toggle" aria-pressed="true">Tajweed colours</button>
@@ -85,7 +86,17 @@
         </section>
       </main>
     </div>
-    <template id="verse-template"><section class="verse"><div class="verse-top"><button class="verse-number"></button><button class="bookmark" aria-label="Bookmark verse">♡</button></div><p class="arabic" dir="rtl" lang="ar"></p><p class="translation"></p></section></template>
+    <template id="verse-template"><section class="verse"><div class="verse-top"><button class="verse-number"></button><button class="bookmark" aria-label="Bookmark verse">♡</button></div><p class="arabic" dir="rtl" lang="ar"></p><p class="translation"></p><section class="tafsir-inline"><p class="tafsir-inline-label">TAFSIR IBN KATHIR <span>ABRIDGED</span></p><div class="tafsir-inline-content"></div></section></section></template>
+    <section class="tafsir-sheet" id="tafsir-sheet" aria-hidden="true" hidden>
+      <button class="tafsir-backdrop" id="tafsir-backdrop" aria-label="Close tafsir"></button>
+      <article class="tafsir-panel" role="dialog" aria-modal="true" aria-labelledby="tafsir-title">
+        <div class="tafsir-handle" aria-hidden="true"></div>
+        <header class="tafsir-header"><div><p class="tafsir-eyebrow" id="tafsir-reference">1:1</p><h2 id="tafsir-title">Tafsir Ibn Kathir</h2><p>Ibn Kathir (Abridged)</p></div><button class="tafsir-close" id="tafsir-close" aria-label="Close tafsir">×</button></header>
+        <div class="tafsir-verse"><p class="tafsir-arabic" id="tafsir-arabic" dir="rtl" lang="ar"></p><p id="tafsir-translation"></p></div>
+        <div class="tafsir-content" id="tafsir-content"></div>
+        <footer class="tafsir-source">Tafsir: Ibn Kathir (Abridged) · Quran.com</footer>
+      </article>
+    </section>
     <script>
       // Browsers treat network calls more reliably when this app is served locally.
       if (location.protocol === 'file:') location.replace('http://127.0.0.1:4173');

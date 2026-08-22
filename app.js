@@ -4,6 +4,7 @@ const list = $('#surah-list');
 const verses = $('#verses');
 const template = $('#verse-template');
 let chapters = [];
+let tafsirChapters = [];
 let current = Number(localStorage.getItem('quran-last-surah')) || 1;
 let size = 42;
 let activeLibrary = localStorage.getItem('quran-library') || 'surahs';
@@ -14,6 +15,7 @@ if (localStorage.getItem('quran-tajweed-setting-version') !== TAJWEED_SETTING_VE
   localStorage.setItem('quran-tajweed', 'true');
 }
 let tajweedEnabled = localStorage.getItem('quran-tajweed') !== 'false';
+let readingMode = localStorage.getItem('quran-reading-mode') || 'both';
 const juzStarts = [[1,1],[2,142],[2,253],[3,93],[4,24],[4,148],[5,82],[6,111],[7,88],[8,41],[9,93],[11,6],[12,53],[15,1],[17,1],[18,75],[21,1],[23,1],[25,21],[27,56],[29,46],[33,31],[36,28],[39,32],[41,47],[46,1],[51,31],[58,1],[67,1],[78,1]];
 
 function renderList(filter = '') {
@@ -97,6 +99,8 @@ function renderVerses(data) {
     $('.verse-number', item).textContent = index + 1;
     renderArabic($('.arabic', item), ayah, data.tajweed?.[index] || []);
     $('.translation', item).textContent = data.translation[index] || '';
+    $('.tafsir-inline-content', item).innerHTML = tafsirChapters[current - 1]?.[index]
+      || '<p class="tafsir-unavailable">This abridged edition has no separate tafsir passage for this ayah.</p>';
     const bookmark = $('.bookmark', item);
     const key = `quran-bookmark-${current}-${index + 1}`;
     if (localStorage.getItem(key)) { bookmark.classList.add('saved'); bookmark.textContent = '♥'; }
@@ -108,6 +112,28 @@ function renderVerses(data) {
     };
     verses.append(item);
   });
+}
+
+function openTafsir(index) {
+  const chapter = chapters[current - 1];
+  const sheet = $('#tafsir-sheet');
+  const tafsir = tafsirChapters[current - 1]?.[index];
+  $('#tafsir-reference').textContent = `${current}:${index + 1}`;
+  $('#tafsir-arabic').textContent = chapter.arabic[index] || '';
+  $('#tafsir-translation').textContent = chapter.translation[index] || '';
+  $('#tafsir-content').innerHTML = tafsir || '<p class="tafsir-unavailable">This abridged edition has no separate tafsir passage for this ayah. The Quran, translation, and all available tafsir passages are already stored on this device.</p>';
+  sheet.hidden = false;
+  sheet.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('tafsir-open');
+  $('.tafsir-panel', sheet).scrollTop = 0;
+  $('#tafsir-close').focus();
+}
+
+function closeTafsir() {
+  const sheet = $('#tafsir-sheet');
+  sheet.hidden = true;
+  sheet.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('tafsir-open');
 }
 
 function renderArabic(element, text, wordRules) {
@@ -183,9 +209,13 @@ function renderTajweed(element, text, annotations) {
 
 async function initialise() {
   try {
-    const response = await fetch('/data/quran-v13.json');
-    if (!response.ok) throw new Error('Offline Quran data is missing');
-    chapters = (await response.json()).chapters;
+    const [quranResponse, tafsirResponse] = await Promise.all([
+      fetch('/data/quran-v13.json'),
+      fetch('/data/tafsir-ibn-kathir-v1.json'),
+    ]);
+    if (!quranResponse.ok) throw new Error('Offline Quran data is missing');
+    chapters = (await quranResponse.json()).chapters;
+    if (tafsirResponse.ok) tafsirChapters = (await tafsirResponse.json()).chapters || [];
     renderList();
     renderJuzList();
     switchLibrary(activeLibrary);
@@ -197,11 +227,16 @@ async function initialise() {
   }
 }
 
-$$('.translation-toggle').forEach((button) => button.onclick = () => {
+function setReadingMode(mode) {
+  readingMode = mode;
+  localStorage.setItem('quran-reading-mode', mode);
   $$('.translation-toggle').forEach((item) => item.classList.remove('selected'));
-  button.classList.add('selected');
-  document.body.classList.toggle('arabic-only', button.dataset.mode === 'arabic');
-});
+  $(`.translation-toggle[data-mode="${mode}"]`).classList.add('selected');
+  document.body.classList.toggle('arabic-only', mode === 'arabic');
+  document.body.classList.toggle('tafsir-mode', mode === 'tafsir');
+}
+
+$$('.translation-toggle').forEach((button) => button.onclick = () => setReadingMode(button.dataset.mode));
 $$('.size-button').forEach((button) => button.onclick = () => {
   size += button.dataset.size === 'up' ? 3 : -3;
   size = Math.max(30, Math.min(58, size));
@@ -224,6 +259,10 @@ $('#tajweed-toggle').onclick = () => {
   $('#tajweed-toggle').setAttribute('aria-pressed', tajweedEnabled);
   loadSurah(current);
 };
+setReadingMode(readingMode);
+$('#tafsir-close').onclick = closeTafsir;
+$('#tafsir-backdrop').onclick = closeTafsir;
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeTafsir(); });
 const darkMode = localStorage.getItem('quran-dark-mode') === 'true';
 document.body.classList.toggle('dark-mode', darkMode);
 $('#theme-toggle').textContent = darkMode ? '☀' : '☾';
