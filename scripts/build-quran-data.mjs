@@ -46,7 +46,9 @@ for (let start = 1; start <= 114; start += 6) {
 }
 
 await mkdir(new URL('../data/', import.meta.url), { recursive: true });
-await writeFile(new URL('../data/quran.json', import.meta.url), JSON.stringify({ chapters }));
+const bundledQuran = JSON.stringify({ chapters });
+await writeFile(new URL('../data/quran.json', import.meta.url), bundledQuran);
+await writeFile(new URL('../data/quran-v13.json', import.meta.url), bundledQuran);
 const fontResponse = await fetch('https://verses.quran.foundation/fonts/quran/hafs/nastaleeq/indopak/indopak-nastaleeq-waqf-lazim-v4.2.1.woff2');
 if (!fontResponse.ok) throw new Error('Could not download the IndoPak font.');
 await mkdir(new URL('../assets/fonts/', import.meta.url), { recursive: true });

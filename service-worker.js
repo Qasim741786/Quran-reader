@@ -1,11 +1,11 @@
 /* Offline-first PWA cache. Bump this version whenever bundled files change. */
-const CACHE_VERSION = 'quran-reader-v12';
+const CACHE_VERSION = 'quran-reader-v13';
 const CACHE_NAME = `${CACHE_VERSION}-precache`;
 const CACHE_PREFIX = 'quran-reader-';
 const APP_SHELL = '/index.html';
 const PRECACHE_URLS = [
   '/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest',
-  '/data/quran.json', '/assets/fonts/indopak-nastaleeq.woff2',
+  '/data/quran-v13.json', '/assets/fonts/indopak-nastaleeq.woff2',
   '/assets/icon.svg', '/assets/icon-180.png', '/assets/icon-512.png',
 ];
 
