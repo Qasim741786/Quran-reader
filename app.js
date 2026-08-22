@@ -99,7 +99,7 @@ function renderTajweed(element, text, annotations) {
 
 async function initialise() {
   try {
-    const response = await fetch('data/quran.json');
+    const response = await fetch('/data/quran.json');
     if (!response.ok) throw new Error('Offline Quran data is missing');
     chapters = (await response.json()).chapters;
     renderList();

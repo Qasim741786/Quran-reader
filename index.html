@@ -7,12 +7,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Quran" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="assets/icon-180.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Scheherazade+New:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/assets/icon-180.png" />
+    <link rel="stylesheet" href="/styles.css" />
     <title>Quran | Read with meaning</title>
   </head>
   <body>
@@ -88,9 +85,14 @@
       // Browsers treat network calls more reliably when this app is served locally.
       if (location.protocol === 'file:') location.replace('http://127.0.0.1:4173');
     </script>
-    <script src="app.js?v=4"></script>
     <script>
-      if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
+      if ('serviceWorker' in navigator) {
+        window.quranOfflineReady = navigator.serviceWorker.register('/service-worker.js', {
+          scope: '/',
+          updateViaCache: 'none',
+        }).then(() => navigator.serviceWorker.ready);
+      }
     </script>
+    <script src="/app.js"></script>
   </body>
 </html>

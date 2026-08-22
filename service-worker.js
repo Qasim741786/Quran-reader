@@ -1,30 +1,64 @@
-const APP_CACHE = 'quran-reader-app-v1';
-const DATA_CACHE = 'quran-reader-data-v1';
-const APP_FILES = [
-  './', './index.html', './styles.css', './app.js', './manifest.webmanifest',
-  './assets/icon.svg', './assets/icon-180.png', './assets/icon-512.png', './assets/fonts/indopak-nastaleeq.woff2'
+/* Offline-first PWA cache. Bump this version whenever bundled files change. */
+const CACHE_VERSION = 'quran-reader-v3';
+const CACHE_NAME = `${CACHE_VERSION}-precache`;
+const CACHE_PREFIX = 'quran-reader-';
+const APP_SHELL = '/index.html';
+const PRECACHE_URLS = [
+  '/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest',
+  '/data/quran.json', '/assets/fonts/indopak-nastaleeq.woff2',
+  '/assets/icon.svg', '/assets/icon-180.png', '/assets/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(APP_CACHE).then((cache) => cache.addAll(APP_FILES)).then(() => self.skipWaiting()));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(PRECACHE_URLS);
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames
+      .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
+      .map((name) => caches.delete(name)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
+  const { request } = event;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  const isOfflineAsset = /data\/quran\.json|assets\/fonts/.test(url.pathname);
-  if (isOfflineAsset) {
-    event.respondWith(caches.open(DATA_CACHE).then(async (cache) => (await cache.match(event.request)) || cache.add(event.request).then(() => cache.match(event.request))));
+
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const networkResponse = await fetch(request);
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(APP_SHELL, networkResponse.clone());
+        return networkResponse;
+      } catch {
+        return (await caches.match(APP_SHELL)) || (await caches.match('/'));
+      }
+    })());
     return;
   }
-  event.respondWith(fetch(event.request).then((response) => {
-    const copy = response.clone();
-    caches.open(APP_CACHE).then((cache) => cache.put(event.request, copy));
-    return response;
-  }).catch(() => caches.match(event.request)));
+
+  event.respondWith((async () => {
+    const cached = await caches.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    try {
+      const networkResponse = await fetch(request);
+      if (networkResponse.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(request, networkResponse.clone());
+      }
+      return networkResponse;
+    } catch {
+      return Response.error();
+    }
+  })());
 });
