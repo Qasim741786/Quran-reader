@@ -5,6 +5,7 @@ const verses = $('#verses');
 const template = $('#verse-template');
 let chapters = [];
 let tafsirChapters = [];
+let maherTimings = [];
 let current = Number(localStorage.getItem('quran-last-surah')) || 1;
 let size = 42;
 let activeLibrary = localStorage.getItem('quran-library') || 'surahs';
@@ -16,6 +17,9 @@ if (localStorage.getItem('quran-tajweed-setting-version') !== TAJWEED_SETTING_VE
 }
 let tajweedEnabled = localStorage.getItem('quran-tajweed') !== 'false';
 let readingMode = localStorage.getItem('quran-reading-mode') || 'both';
+const AUDIO_CACHE_NAME = 'quran-reader-maher-audio-v1';
+let preparedAudioSurah = 0;
+let highlightedAyah = 0;
 const juzStarts = [[1,1],[2,142],[2,253],[3,93],[4,24],[4,148],[5,82],[6,111],[7,88],[8,41],[9,93],[11,6],[12,53],[15,1],[17,1],[18,75],[21,1],[23,1],[25,21],[27,56],[29,46],[33,31],[36,28],[39,32],[41,47],[46,1],[51,31],[58,1],[67,1],[78,1]];
 
 function renderList(filter = '') {
@@ -82,6 +86,10 @@ async function loadSurah(number, targetAyah = 1, collapseLibrary = true) {
   $('#previous-surah').disabled = number === 1;
   $('#next-surah').disabled = number === 114;
   $('#bismillah').style.display = number === 9 ? 'none' : 'flex';
+  $('#audio-player').hidden = true;
+  $('#recitation-audio').pause();
+  preparedAudioSurah = 0;
+  setHighlightedAyah(0);
   if (collapseLibrary) setLibraryOpen(false);
   renderList($('#surah-search').value);
   verses.innerHTML = '<div class="loader">Opening the Quran…</div>';
@@ -89,6 +97,81 @@ async function loadSurah(number, targetAyah = 1, collapseLibrary = true) {
 
   renderVerses({ arabic: chapter.arabic, translation: chapter.translation, tajweed: chapter.tajweed });
   if (targetAyah > 1) requestAnimationFrame(() => document.getElementById(`ayah-${targetAyah}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+}
+
+function maherAudioUrl(surahNumber) {
+  return `https://audio-cdn.tarteel.ai/quran/surah/maherAlMuaiqly/murattal/mp3/${String(surahNumber).padStart(3, '0')}.mp3`;
+}
+
+async function playRecitation() {
+  const button = $('#listen-button');
+  const player = $('#audio-player');
+  const audio = $('#recitation-audio');
+  const status = $('#audio-status');
+  const url = maherAudioUrl(current);
+  if (preparedAudioSurah === current && audio.src) {
+    try {
+      await audio.play();
+      return;
+    } catch {
+      status.textContent = 'Press play in the audio controls below.';
+      return;
+    }
+  }
+  player.hidden = false;
+  audio.src = url;
+  audio.load();
+  preparedAudioSurah = current;
+  status.textContent = 'Streaming now · saving this surah for offline listening…';
+  try {
+    await audio.play();
+  } catch {
+    status.textContent = 'Press play in the audio controls below.';
+  }
+  saveRecitationForOffline(url, current, status);
+}
+
+async function saveRecitationForOffline(url, surahNumber, status) {
+  try {
+    const cache = await caches.open(AUDIO_CACHE_NAME);
+    let response = await cache.match(url);
+    if (!response) {
+      status.textContent = 'Downloading this surah for offline listening…';
+      response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) throw new Error('Audio download failed');
+      await cache.put(url, response.clone());
+    }
+    if (surahNumber === current) status.textContent = 'Saved on this device · available offline';
+  } catch {
+    if (surahNumber === current && !navigator.onLine) status.textContent = 'Audio is not saved on this device yet.';
+  }
+}
+
+function ayahAtPlaybackTime(seconds, duration) {
+  const timings = maherTimings[current - 1];
+  if (!timings?.length || !Number.isFinite(seconds)) return 0;
+  const milliseconds = seconds * 1000;
+  let previousAyah = 0;
+  for (let index = 0; index < timings.length; index += 1) {
+    const timing = timings[index];
+    if (!timing) continue;
+    if (milliseconds < timing.time_from) return previousAyah;
+    if (milliseconds <= timing.time_to) return index + 1;
+    previousAyah = index + 1;
+  }
+  return previousAyah;
+}
+
+function setHighlightedAyah(ayahNumber) {
+  if (highlightedAyah === ayahNumber) return;
+  if (highlightedAyah) document.getElementById(`ayah-${highlightedAyah}`)?.classList.remove('playing');
+  highlightedAyah = ayahNumber;
+  if (ayahNumber) document.getElementById(`ayah-${ayahNumber}`)?.classList.add('playing');
+}
+
+function syncAyahHighlight() {
+  const audio = $('#recitation-audio');
+  setHighlightedAyah(ayahAtPlaybackTime(audio.currentTime, audio.duration));
 }
 
 function renderVerses(data) {
@@ -209,13 +292,15 @@ function renderTajweed(element, text, annotations) {
 
 async function initialise() {
   try {
-    const [quranResponse, tafsirResponse] = await Promise.all([
+    const [quranResponse, tafsirResponse, timingResponse] = await Promise.all([
       fetch('/data/quran-v13.json'),
       fetch('/data/tafsir-ibn-kathir-v1.json'),
+      fetch('/data/maher-timings-v1.json'),
     ]);
     if (!quranResponse.ok) throw new Error('Offline Quran data is missing');
     chapters = (await quranResponse.json()).chapters;
     if (tafsirResponse.ok) tafsirChapters = (await tafsirResponse.json()).chapters || [];
+    if (timingResponse.ok) maherTimings = (await timingResponse.json()).chapters || [];
     renderList();
     renderJuzList();
     switchLibrary(activeLibrary);
@@ -249,6 +334,10 @@ $('.mobile-menu').onclick = () => $('.sidebar').classList.toggle('open');
 $('#previous-surah').onclick = () => loadSurah(current - 1);
 $('#next-surah').onclick = () => loadSurah(current + 1);
 $('#resume').onclick = () => loadSurah(current);
+$('#listen-button').onclick = playRecitation;
+$('#recitation-audio').addEventListener('timeupdate', syncAyahHighlight);
+$('#recitation-audio').addEventListener('seeking', syncAyahHighlight);
+$('#recitation-audio').addEventListener('ended', () => setHighlightedAyah(0));
 $('#library-toggle').onclick = () => setLibraryOpen(!libraryOpen, true);
 $('#tajweed-toggle').classList.toggle('selected', tajweedEnabled);
 $('#tajweed-toggle').setAttribute('aria-pressed', tajweedEnabled);

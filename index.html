@@ -60,8 +60,12 @@
               <h1 id="surah-name">Al-Fatihah</h1>
               <p class="subtitle" id="surah-english">The Opening</p>
             </div>
-            <button class="listen-button" aria-label="Listen to Al-Fatihah"><span>▶</span> Listen</button>
+            <button class="listen-button" id="listen-button" aria-label="Listen to this surah"><span>▶</span> Listen</button>
           </div>
+          <section class="audio-player" id="audio-player" hidden aria-label="Maher Al-Muaiqly recitation player">
+            <div><p>RECITATION</p><strong>Shaykh Maher Al‑Muaiqly</strong><small id="audio-status">Preparing audio…</small></div>
+            <audio id="recitation-audio" controls preload="none"></audio>
+          </section>
 
           <section class="controls" aria-label="Reading controls">
             <div class="toggle-group" role="group" aria-label="Translation visibility">

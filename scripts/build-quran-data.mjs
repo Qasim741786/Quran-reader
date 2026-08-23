@@ -40,29 +40,34 @@ function sanitizeTafsirHtml(html) {
 }
 
 const tafsirChapters = Array.from({ length: 114 }, () => []);
+const maherTimings = Array.from({ length: 114 }, () => []);
 
 for (let start = 1; start <= 114; start += 6) {
   const batch = await Promise.all(Array.from({ length: Math.min(6, 115 - start) }, async (_, offset) => {
     const number = start + offset;
-    const [verseResponse, tafsirResponse] = await Promise.all([
+    const [verseResponse, tafsirResponse, timingResponse] = await Promise.all([
       fetch(`https://api.quran.com/api/v4/verses/by_chapter/${number}?fields=text_indopak,text_uthmani_tajweed&per_page=300`),
       fetch(`https://api.quran.com/api/v4/tafsirs/169/by_chapter/${number}?per_page=300`),
+      fetch(`https://qul.tarteel.ai/api/v1/audio/surah_segments/65?surah=${number}&from=1&to=${chapters[number - 1].arabic.length}&per_page=300`),
     ]);
     if (!verseResponse.ok) throw new Error(`Could not download IndoPak text for surah ${number}.`);
     if (!tafsirResponse.ok) throw new Error(`Could not download Ibn Kathir tafsir for surah ${number}.`);
+    if (!timingResponse.ok) throw new Error(`Could not download Maher timings for surah ${number}.`);
     return {
       number,
       verses: (await verseResponse.json()).verses,
       tafsirs: (await tafsirResponse.json()).tafsirs,
+      timings: (await timingResponse.json()).segments,
     };
   }));
-  batch.forEach(({ number, verses, tafsirs }) => {
+  batch.forEach(({ number, verses, tafsirs, timings }) => {
     chapters[number - 1].arabic = verses.map((verse) => verse.text_indopak);
     chapters[number - 1].tajweed = verses.map((verse) => tajweedRulesByWord(verse.text_uthmani_tajweed));
     tafsirs.forEach((tafsir) => {
       const ayahNumber = Number(tafsir.verse_key.split(':')[1]);
       tafsirChapters[number - 1][ayahNumber - 1] = sanitizeTafsirHtml(tafsir.text);
     });
+    maherTimings[number - 1] = Array.from({ length: chapters[number - 1].arabic.length }, (_, index) => timings[`${number}:${index + 1}`] || null);
   });
 }
 
@@ -75,9 +80,11 @@ await writeFile(new URL('../data/tafsir-ibn-kathir-v1.json', import.meta.url), J
   source: 'Quran.com',
   chapters: tafsirChapters,
 }));
+await writeFile(new URL('../data/maher-timings-v1.json', import.meta.url), JSON.stringify({ chapters: maherTimings }));
 const fontResponse = await fetch('https://verses.quran.foundation/fonts/quran/hafs/nastaleeq/indopak/indopak-nastaleeq-waqf-lazim-v4.2.1.woff2');
 if (!fontResponse.ok) throw new Error('Could not download the IndoPak font.');
 await mkdir(new URL('../assets/fonts/', import.meta.url), { recursive: true });
 await writeFile(new URL('../assets/fonts/indopak-nastaleeq.woff2', import.meta.url), Buffer.from(await fontResponse.arrayBuffer()));
 console.log(`Saved ${chapters.length} surahs for offline reading.`);
 console.log(`Saved Ibn Kathir tafsir for ${tafsirChapters.length} surahs.`);
+console.log(`Saved ${maherTimings.flat().filter(Boolean).length} Maher Al-Muaiqly ayah timings.`);
