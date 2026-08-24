@@ -181,6 +181,10 @@ function renderVerses(data) {
     $('.verse', item).id = `ayah-${index + 1}`;
     $('.verse-number', item).textContent = index + 1;
     renderArabic($('.arabic', item), ayah, data.tajweed?.[index] || []);
+    const verseEnd = document.createElement('span');
+    verseEnd.className = 'verse-end';
+    verseEnd.textContent = index + 1;
+    $('.arabic', item).append(' ', verseEnd, ' ');
     $('.translation', item).textContent = data.translation[index] || '';
     $('.tafsir-inline-content', item).innerHTML = tafsirChapters[current - 1]?.[index]
       || '<p class="tafsir-unavailable">This abridged edition has no separate tafsir passage for this ayah.</p>';
