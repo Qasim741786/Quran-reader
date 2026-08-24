@@ -3,12 +3,14 @@ import { mkdir, writeFile } from 'node:fs/promises';
 const sources = await Promise.all([
   fetch('https://api.alquran.cloud/v1/quran/quran-uthmani').then((response) => response.json()),
   fetch('https://api.alquran.cloud/v1/quran/en.sahih').then((response) => response.json()),
+  fetch('https://api.alquran.cloud/v1/quran/en.transliteration').then((response) => response.json()),
 ]);
 
 if (sources.some((source) => source.code !== 200)) throw new Error('Could not download Quran data.');
 
 const chapters = sources[0].data.surahs.map((surah, index) => {
   const translation = sources[1].data.surahs[index];
+  const transliteration = sources[2].data.surahs[index];
   return {
     number: surah.number,
     name: surah.name,
@@ -18,6 +20,7 @@ const chapters = sources[0].data.surahs.map((surah, index) => {
     numberOfAyahs: surah.numberOfAyahs,
     arabic: surah.ayahs.map((ayah) => ayah.text),
     translation: translation.ayahs.map((ayah) => ayah.text),
+    transliteration: transliteration.ayahs.map((ayah) => ayah.text),
     tajweed: surah.ayahs.map(() => []),
   };
 });
@@ -40,24 +43,33 @@ function sanitizeTafsirHtml(html) {
 }
 
 const tafsirChapters = Array.from({ length: 114 }, () => []);
-const maherTimings = Array.from({ length: 114 }, () => []);
+const RECITERS = [
+  { id: 'maher', name: 'Shaykh Maher Al-Muaiqly', sourceId: 65 },
+  { id: 'abdul-basit', name: 'Abdul Basit Abdul Samad (Murattal)', sourceId: 2 },
+  { id: 'minshawi', name: 'Muhammad Siddiq al-Minshawi (Murattal)', sourceId: 9 },
+];
+const recitationTimings = Object.fromEntries(RECITERS.map((reciter) => [reciter.id, {
+  name: reciter.name,
+  chapters: Array.from({ length: 114 }, () => []),
+  audioUrls: Array(114).fill(''),
+}]));
 
 for (let start = 1; start <= 114; start += 6) {
   const batch = await Promise.all(Array.from({ length: Math.min(6, 115 - start) }, async (_, offset) => {
     const number = start + offset;
-    const [verseResponse, tafsirResponse, timingResponse] = await Promise.all([
+    const [verseResponse, tafsirResponse, timingResponses] = await Promise.all([
       fetch(`https://api.quran.com/api/v4/verses/by_chapter/${number}?fields=text_indopak,text_uthmani_tajweed&per_page=300`),
       fetch(`https://api.quran.com/api/v4/tafsirs/169/by_chapter/${number}?per_page=300`),
-      fetch(`https://qul.tarteel.ai/api/v1/audio/surah_segments/65?surah=${number}&from=1&to=${chapters[number - 1].arabic.length}&per_page=300`),
+      Promise.all(RECITERS.map((reciter) => fetch(`https://qul.tarteel.ai/api/v1/audio/surah_segments/${reciter.sourceId}?surah=${number}&from=1&to=${chapters[number - 1].arabic.length}&per_page=300`))),
     ]);
     if (!verseResponse.ok) throw new Error(`Could not download IndoPak text for surah ${number}.`);
     if (!tafsirResponse.ok) throw new Error(`Could not download Ibn Kathir tafsir for surah ${number}.`);
-    if (!timingResponse.ok) throw new Error(`Could not download Maher timings for surah ${number}.`);
+    if (timingResponses.some((response) => !response.ok)) throw new Error(`Could not download recitation timings for surah ${number}.`);
     return {
       number,
       verses: (await verseResponse.json()).verses,
       tafsirs: (await tafsirResponse.json()).tafsirs,
-      timings: (await timingResponse.json()).segments,
+      timings: await Promise.all(timingResponses.map((response) => response.json())),
     };
   }));
   batch.forEach(({ number, verses, tafsirs, timings }) => {
@@ -67,7 +79,14 @@ for (let start = 1; start <= 114; start += 6) {
       const ayahNumber = Number(tafsir.verse_key.split(':')[1]);
       tafsirChapters[number - 1][ayahNumber - 1] = sanitizeTafsirHtml(tafsir.text);
     });
-    maherTimings[number - 1] = Array.from({ length: chapters[number - 1].arabic.length }, (_, index) => timings[`${number}:${index + 1}`] || null);
+    timings.forEach((timingData, index) => {
+      const reciter = RECITERS[index];
+      recitationTimings[reciter.id].chapters[number - 1] = Array.from(
+        { length: chapters[number - 1].arabic.length },
+        (_, ayahIndex) => timingData.segments[`${number}:${ayahIndex + 1}`] || null,
+      );
+      recitationTimings[reciter.id].audioUrls[number - 1] = timingData.audio.url;
+    });
   });
 }
 
@@ -75,16 +94,17 @@ await mkdir(new URL('../data/', import.meta.url), { recursive: true });
 const bundledQuran = JSON.stringify({ chapters });
 await writeFile(new URL('../data/quran.json', import.meta.url), bundledQuran);
 await writeFile(new URL('../data/quran-v13.json', import.meta.url), bundledQuran);
+await writeFile(new URL('../data/quran-v14.json', import.meta.url), bundledQuran);
 await writeFile(new URL('../data/tafsir-ibn-kathir-v1.json', import.meta.url), JSON.stringify({
   resource: 'Ibn Kathir (Abridged)',
   source: 'Quran.com',
   chapters: tafsirChapters,
 }));
-await writeFile(new URL('../data/maher-timings-v1.json', import.meta.url), JSON.stringify({ chapters: maherTimings }));
+await writeFile(new URL('../data/recitation-timings-v1.json', import.meta.url), JSON.stringify({ reciters: recitationTimings }));
 const fontResponse = await fetch('https://verses.quran.foundation/fonts/quran/hafs/nastaleeq/indopak/indopak-nastaleeq-waqf-lazim-v4.2.1.woff2');
 if (!fontResponse.ok) throw new Error('Could not download the IndoPak font.');
 await mkdir(new URL('../assets/fonts/', import.meta.url), { recursive: true });
 await writeFile(new URL('../assets/fonts/indopak-nastaleeq.woff2', import.meta.url), Buffer.from(await fontResponse.arrayBuffer()));
 console.log(`Saved ${chapters.length} surahs for offline reading.`);
 console.log(`Saved Ibn Kathir tafsir for ${tafsirChapters.length} surahs.`);
-console.log(`Saved ${maherTimings.flat().filter(Boolean).length} Maher Al-Muaiqly ayah timings.`);
+console.log(`Saved ${RECITERS.length} reciters with ${Object.values(recitationTimings).reduce((sum, reciter) => sum + reciter.chapters.flat().filter(Boolean).length, 0)} ayah timings.`);

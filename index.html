@@ -63,7 +63,7 @@
             <button class="listen-button" id="listen-button" aria-label="Listen to this surah"><span>▶</span> Listen</button>
           </div>
           <section class="audio-player" id="audio-player" hidden aria-label="Maher Al-Muaiqly recitation player">
-            <div><p>RECITATION</p><strong>Shaykh Maher Al‑Muaiqly</strong><small id="audio-status">Preparing audio…</small></div>
+            <div><p>RECITATION</p><label class="reciter-select"><select id="reciter-select" aria-label="Choose reciter"><option value="maher">Shaykh Maher Al‑Muaiqly</option><option value="abdul-basit">Abdul Basit Abdul Samad</option><option value="minshawi">Muhammad Siddiq al‑Minshawi</option></select></label><small id="audio-status">Preparing audio…</small></div>
             <audio id="recitation-audio" controls preload="none"></audio>
           </section>
 
@@ -71,12 +71,14 @@
             <div class="toggle-group" role="group" aria-label="Translation visibility">
               <button class="translation-toggle selected" data-mode="both">Arabic & translation</button>
               <button class="translation-toggle" data-mode="arabic">Arabic only</button>
+              <button class="translation-toggle" data-mode="transliteration">Arabic & transliteration</button>
               <button class="translation-toggle" data-mode="tafsir">Tafsir</button>
             </div>
             <div class="type-controls">
               <button class="tajweed-toggle" id="tajweed-toggle" aria-pressed="true">Tajweed colours</button>
               <span>Text size</span>
               <button class="size-button" data-size="down" aria-label="Decrease Arabic text size">A−</button>
+              <input class="size-slider" id="size-slider" type="range" min="30" max="58" value="42" aria-label="Arabic text size" />
               <button class="size-button" data-size="up" aria-label="Increase Arabic text size">A+</button>
             </div>
           </section>
@@ -85,12 +87,12 @@
             <div class="ornament" id="bismillah"><span></span><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b><span></span></div>
             <div class="verses" id="verses"><div class="loader">Opening the Quran…</div></div>
           </article>
-          <div class="source-note">Arabic: Uthmani script · Translation: Sahih International</div>
+          <div class="source-note">Arabic: IndoPak script · Translation: Sahih International · Transliteration: AlQuran Cloud</div>
           <div class="chapter-nav"><button id="previous-surah">← Previous</button><button id="next-surah">Next →</button></div>
         </section>
       </main>
     </div>
-    <template id="verse-template"><section class="verse"><div class="verse-top"><button class="verse-number"></button><button class="bookmark" aria-label="Bookmark verse">♡</button></div><p class="arabic" dir="rtl" lang="ar"></p><p class="translation"></p><section class="tafsir-inline"><p class="tafsir-inline-label">TAFSIR IBN KATHIR <span>ABRIDGED</span></p><div class="tafsir-inline-content"></div></section></section></template>
+    <template id="verse-template"><section class="verse"><div class="verse-top"><button class="verse-number"></button><button class="bookmark" aria-label="Bookmark verse">♡</button></div><p class="arabic" dir="rtl" lang="ar"></p><p class="translation"></p><p class="transliteration"></p><section class="tafsir-inline"><p class="tafsir-inline-label">TAFSIR IBN KATHIR <span>ABRIDGED</span></p><div class="tafsir-inline-content"></div></section></section></template>
     <section class="tafsir-sheet" id="tafsir-sheet" aria-hidden="true" hidden>
       <button class="tafsir-backdrop" id="tafsir-backdrop" aria-label="Close tafsir"></button>
       <article class="tafsir-panel" role="dialog" aria-modal="true" aria-labelledby="tafsir-title">

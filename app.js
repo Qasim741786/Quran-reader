@@ -5,7 +5,7 @@ const verses = $('#verses');
 const template = $('#verse-template');
 let chapters = [];
 let tafsirChapters = [];
-let maherTimings = [];
+let recitationData = {};
 let current = Number(localStorage.getItem('quran-last-surah')) || 1;
 let size = 42;
 let activeLibrary = localStorage.getItem('quran-library') || 'surahs';
@@ -17,8 +17,9 @@ if (localStorage.getItem('quran-tajweed-setting-version') !== TAJWEED_SETTING_VE
 }
 let tajweedEnabled = localStorage.getItem('quran-tajweed') !== 'false';
 let readingMode = localStorage.getItem('quran-reading-mode') || 'both';
-const AUDIO_CACHE_NAME = 'quran-reader-maher-audio-v1';
+const AUDIO_CACHE_NAME = 'quran-reader-audio-v2';
 let preparedAudioSurah = 0;
+let reciter = localStorage.getItem('quran-reciter') || 'maher';
 let highlightedAyah = 0;
 const juzStarts = [[1,1],[2,142],[2,253],[3,93],[4,24],[4,148],[5,82],[6,111],[7,88],[8,41],[9,93],[11,6],[12,53],[15,1],[17,1],[18,75],[21,1],[23,1],[25,21],[27,56],[29,46],[33,31],[36,28],[39,32],[41,47],[46,1],[51,31],[58,1],[67,1],[78,1]];
 
@@ -58,7 +59,11 @@ function switchLibrary(kind) {
   $('#juz-list').hidden = isSurahs;
   $('#library-title').textContent = isSurahs ? 'Choose a Surah' : 'Choose a Juz';
   $('#surah-search').placeholder = isSurahs ? 'Search name or number' : 'Search juz number or surah';
-  $$('.library-tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.library === kind));
+  $$('.library-tab').forEach((tab) => {
+    const selected = tab.dataset.library === kind;
+    tab.classList.toggle('active', selected);
+    tab.setAttribute('aria-selected', selected);
+  });
   (isSurahs ? renderList : renderJuzList)($('#surah-search').value);
 }
 
@@ -95,12 +100,12 @@ async function loadSurah(number, targetAyah = 1, collapseLibrary = true) {
   verses.innerHTML = '<div class="loader">Opening the Quran…</div>';
   $('#reader').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  renderVerses({ arabic: chapter.arabic, translation: chapter.translation, tajweed: chapter.tajweed });
+  renderVerses({ arabic: chapter.arabic, translation: chapter.translation, transliteration: chapter.transliteration, tajweed: chapter.tajweed });
   if (targetAyah > 1) requestAnimationFrame(() => document.getElementById(`ayah-${targetAyah}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
 }
 
-function maherAudioUrl(surahNumber) {
-  return `https://audio-cdn.tarteel.ai/quran/surah/maherAlMuaiqly/murattal/mp3/${String(surahNumber).padStart(3, '0')}.mp3`;
+function reciterAudioUrl(surahNumber) {
+  return recitationData[reciter]?.audioUrls?.[surahNumber - 1] || '';
 }
 
 async function playRecitation() {
@@ -108,7 +113,11 @@ async function playRecitation() {
   const player = $('#audio-player');
   const audio = $('#recitation-audio');
   const status = $('#audio-status');
-  const url = maherAudioUrl(current);
+  const url = reciterAudioUrl(current);
+  if (!url) {
+    status.textContent = 'Recitation data is still loading. Please try again in a moment.';
+    return;
+  }
   if (preparedAudioSurah === current && audio.src) {
     try {
       await audio.play();
@@ -148,7 +157,7 @@ async function saveRecitationForOffline(url, surahNumber, status) {
 }
 
 function ayahAtPlaybackTime(seconds, duration) {
-  const timings = maherTimings[current - 1];
+  const timings = recitationData[reciter]?.chapters?.[current - 1];
   if (!timings?.length || !Number.isFinite(seconds)) return 0;
   const milliseconds = seconds * 1000;
   let previousAyah = 0;
@@ -186,6 +195,7 @@ function renderVerses(data) {
     verseEnd.textContent = index + 1;
     $('.arabic', item).append(' ', verseEnd, ' ');
     $('.translation', item).textContent = data.translation[index] || '';
+    $('.transliteration', item).textContent = data.transliteration?.[index] || '';
     $('.tafsir-inline-content', item).innerHTML = tafsirChapters[current - 1]?.[index]
       || '<p class="tafsir-unavailable">This abridged edition has no separate tafsir passage for this ayah.</p>';
     const bookmark = $('.bookmark', item);
@@ -297,14 +307,16 @@ function renderTajweed(element, text, annotations) {
 async function initialise() {
   try {
     const [quranResponse, tafsirResponse, timingResponse] = await Promise.all([
-      fetch('/data/quran-v13.json'),
+      fetch('/data/quran-v14.json'),
       fetch('/data/tafsir-ibn-kathir-v1.json'),
-      fetch('/data/maher-timings-v1.json'),
+      fetch('/data/recitation-timings-v1.json'),
     ]);
     if (!quranResponse.ok) throw new Error('Offline Quran data is missing');
     chapters = (await quranResponse.json()).chapters;
     if (tafsirResponse.ok) tafsirChapters = (await tafsirResponse.json()).chapters || [];
-    if (timingResponse.ok) maherTimings = (await timingResponse.json()).chapters || [];
+    if (timingResponse.ok) recitationData = (await timingResponse.json()).reciters || {};
+    if (!recitationData[reciter]) reciter = 'maher';
+    $('#reciter-select').value = reciter;
     renderList();
     renderJuzList();
     switchLibrary(activeLibrary);
@@ -322,6 +334,7 @@ function setReadingMode(mode) {
   $$('.translation-toggle').forEach((item) => item.classList.remove('selected'));
   $(`.translation-toggle[data-mode="${mode}"]`).classList.add('selected');
   document.body.classList.toggle('arabic-only', mode === 'arabic');
+  document.body.classList.toggle('transliteration-mode', mode === 'transliteration');
   document.body.classList.toggle('tafsir-mode', mode === 'tafsir');
 }
 
@@ -330,7 +343,12 @@ $$('.size-button').forEach((button) => button.onclick = () => {
   size += button.dataset.size === 'up' ? 3 : -3;
   size = Math.max(30, Math.min(58, size));
   document.documentElement.style.setProperty('--arabic-size', `${size}px`);
+  $('#size-slider').value = size;
 });
+$('#size-slider').oninput = (event) => {
+  size = Number(event.target.value);
+  document.documentElement.style.setProperty('--arabic-size', `${size}px`);
+};
 $('#surah-search').oninput = (event) => (activeLibrary === 'surahs' ? renderList : renderJuzList)(event.target.value);
 $$('.library-tab').forEach((tab) => tab.onclick = () => switchLibrary(tab.dataset.library));
 $('.search-trigger').onclick = () => { location.hash = 'surahs'; $('#surah-search').focus(); };
@@ -339,6 +357,14 @@ $('#previous-surah').onclick = () => loadSurah(current - 1);
 $('#next-surah').onclick = () => loadSurah(current + 1);
 $('#resume').onclick = () => loadSurah(current);
 $('#listen-button').onclick = playRecitation;
+$('#reciter-select').onchange = (event) => {
+  reciter = event.target.value;
+  localStorage.setItem('quran-reciter', reciter);
+  $('#recitation-audio').pause();
+  $('#audio-player').hidden = true;
+  preparedAudioSurah = 0;
+  setHighlightedAyah(0);
+};
 $('#recitation-audio').addEventListener('timeupdate', syncAyahHighlight);
 $('#recitation-audio').addEventListener('seeking', syncAyahHighlight);
 $('#recitation-audio').addEventListener('ended', () => setHighlightedAyah(0));
@@ -367,7 +393,7 @@ $('#theme-toggle').onclick = () => {
   $('#theme-toggle').setAttribute('aria-label', enabled ? 'Disable dark mode' : 'Enable dark mode');
   if (chapters.length) {
     const chapter = chapters[current - 1];
-    renderVerses({ arabic: chapter.arabic, translation: chapter.translation, tajweed: chapter.tajweed });
+    renderVerses({ arabic: chapter.arabic, translation: chapter.translation, transliteration: chapter.transliteration, tajweed: chapter.tajweed });
   }
 };
 initialise();

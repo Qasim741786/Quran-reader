@@ -1,12 +1,12 @@
 /* Offline-first PWA cache. Bump this version whenever bundled files change. */
-const CACHE_VERSION = 'quran-reader-v21';
+const CACHE_VERSION = 'quran-reader-v25';
 const CACHE_NAME = `${CACHE_VERSION}-precache`;
 const CACHE_PREFIX = 'quran-reader-';
-const AUDIO_CACHE_NAME = 'quran-reader-maher-audio-v1';
+const AUDIO_CACHE_NAME = 'quran-reader-audio-v2';
 const APP_SHELL = '/index.html';
 const PRECACHE_URLS = [
   '/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest',
-  '/data/quran-v13.json', '/data/tafsir-ibn-kathir-v1.json', '/data/maher-timings-v1.json', '/assets/fonts/indopak-nastaleeq.woff2',
+  '/data/quran-v14.json', '/data/tafsir-ibn-kathir-v1.json', '/data/recitation-timings-v1.json', '/assets/fonts/indopak-nastaleeq.woff2',
   '/assets/icon.svg', '/assets/icon-180.png', '/assets/icon-512.png',
 ];
 
