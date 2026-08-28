@@ -74,7 +74,7 @@ export default {
         });
       } catch (error) {
         return Response.json(
-          { error: "Unable to load reciters" },
+          { error: "Unable to load reciters", detail: String(error?.message || error) },
           { status: 500 }
         );
       }
