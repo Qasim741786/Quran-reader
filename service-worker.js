@@ -1,5 +1,5 @@
 /* Offline-first PWA cache. Bump this version whenever bundled files change. */
-const CACHE_VERSION = 'quran-reader-v38';
+const CACHE_VERSION = 'quran-reader-v40';
 const CACHE_NAME = `${CACHE_VERSION}-precache`;
 const CACHE_PREFIX = 'quran-reader-';
 const AUDIO_CACHE_NAME = 'quran-reader-audio-v2';
@@ -33,6 +33,18 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  // QF metadata and streamed audio must never enter the general app-shell
+  // cache. Offline MP3s are inserted deliberately by the app only after a
+  // Content Sync validation, using the dedicated audio cache below.
+  if (url.pathname.startsWith('/api/qf/')) {
+    if (/^\/api\/qf\/chapter-audio\/\d+\/\d+\/file$/.test(url.pathname)) {
+      event.respondWith((async () => (
+        (await caches.open(AUDIO_CACHE_NAME)).match(request) || fetch(request)
+      ))());
+    }
+    return;
+  }
 
   const isAppShell = request.mode === 'navigate' || [
     '/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest', '/service-worker.js',

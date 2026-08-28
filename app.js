@@ -23,7 +23,12 @@ let tajweedEnabled = localStorage.getItem('quran-tajweed') !== 'false';
 let readingMode = localStorage.getItem('quran-reading-mode') || 'both';
 const AUDIO_CACHE_NAME = 'quran-reader-audio-v2';
 const NATIVE_AUDIO_DOWNLOADS_KEY = 'quran-native-recitation-downloads-v1';
+const QF_CONTENT_SYNC_STATE_KEY = 'quran-content-sync-state-v1';
 const NATIVE_AUDIO_DIRECTORY = 'DATA';
+// QF requires the next Content Sync check within seven days. Sync a little
+// early so a normal online launch has time to complete before that limit.
+const QF_CONTENT_SYNC_INTERVAL_MS = 6 * 24 * 60 * 60 * 1000;
+const QF_CONTENT_SYNC_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
 const QF_CHAPTER_RECITER_IDS = Object.freeze({ maher: 159, 'abdul-basit': 1, minshawi: 9, yasser: 174 });
 const QF_WORKER_ORIGIN = 'https://quran-reader.muhammedwaheed741.workers.dev';
 let preparedAudioSurah = 0;
@@ -33,6 +38,8 @@ let activeAudioSource = null;
 let nativeAudioPlugins = null;
 let nativeAudioDownloadRegistry = {};
 let nativeAudioRegistryLoaded = false;
+let contentSyncState = {};
+let contentSyncStateLoaded = false;
 let isScrubbingAudio = false;
 let activeReaderOverlay = null;
 let audioSurface = null;
@@ -346,7 +353,7 @@ async function downloadedRecitationEntries() {
     // The native registry is written only after Filesystem.stat has succeeded.
     // Do not use insertion order: it represents download history, not Quran order.
     return Object.entries(nativeAudioDownloads())
-      .filter(([, item]) => item?.status === 'complete' && Number.isInteger(Number(item.surah)))
+      .filter(([, item]) => item?.status === 'complete' && contentSyncIsCurrent(item) && Number.isInteger(Number(item.surah)))
       .map(([key, item]) => ({ key, ...item, storage: 'native' }));
   }
 
@@ -606,6 +613,67 @@ function reciterAudioUrl(surahNumber) {
   return reciterAudioUrlFor(reciter, surahNumber);
 }
 
+function contentSyncAudioUrlFor(reciterId, surahNumber, resourceId) {
+  const qfReciterId = QF_CHAPTER_RECITER_IDS[reciterId];
+  const chapterNumber = Number(surahNumber);
+  const syncResourceId = Number(resourceId);
+  if (!qfReciterId || !Number.isInteger(chapterNumber) || !Number.isInteger(syncResourceId) || syncResourceId <= 0) return '';
+  return qfApiUrl(`/api/qf/content-sync/audio/${qfReciterId}/${chapterNumber}?resource_id=${syncResourceId}`);
+}
+
+function contentSyncIsCurrent(item) {
+  const validatedAt = Date.parse(item?.contentSync?.validatedAt || '');
+  return item?.contentSync?.source === 'content-sync'
+    && Number.isFinite(validatedAt)
+    && Date.now() - validatedAt < QF_CONTENT_SYNC_VALIDITY_MS;
+}
+
+function contentSyncNeedsCheck(item) {
+  const validatedAt = Date.parse(item?.contentSync?.validatedAt || '');
+  return !item?.contentSync?.source
+    || !Number.isFinite(validatedAt)
+    || Date.now() - validatedAt >= QF_CONTENT_SYNC_INTERVAL_MS;
+}
+
+async function validateContentSyncTrack(reciterId, surahNumber, item = {}) {
+  const qfReciterId = QF_CHAPTER_RECITER_IDS[reciterId];
+  if (!qfReciterId || !navigator.onLine) throw new Error('Content Sync requires an internet connection');
+  if (!contentSyncStateLoaded) await loadContentSyncState();
+  const state = item.contentSync || {};
+  const resourceState = contentSyncState[String(state.resourceId)] || {};
+  const response = await fetch(qfApiUrl(`/api/qf/content-sync/validate/${qfReciterId}/${Number(surahNumber)}`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      state: {
+        resource_id: state.resourceId,
+        sync_token: resourceState.syncToken || state.syncToken,
+        record_key: state.recordKey,
+      },
+    }),
+  });
+  if (!response.ok) throw new Error('Content Sync validation is unavailable');
+  const result = await response.json();
+  if (!['unchanged', 'replace', 'delete'].includes(result?.action) || !Number.isInteger(Number(result.resource_id))) {
+    throw new Error('Invalid Content Sync validation response');
+  }
+  contentSyncState[String(result.resource_id)] = {
+    syncToken: result.sync_token || resourceState.syncToken || '',
+    validatedAt: result.validated_at,
+  };
+  await saveContentSyncState(contentSyncState);
+  return result;
+}
+
+function contentSyncMetadata(result) {
+  return {
+    source: 'content-sync',
+    resourceId: Number(result.resource_id),
+    recordKey: result.record_key || '',
+    validatedAt: result.validated_at,
+  };
+}
+
 async function loadOfficialChapterTimings(reciterId, surahNumber) {
   const qfReciterId = QF_CHAPTER_RECITER_IDS[reciterId];
   const chapterNumber = Number(surahNumber);
@@ -697,6 +765,30 @@ async function saveNativeAudioDownloads(downloads) {
   localStorage.setItem(NATIVE_AUDIO_DOWNLOADS_KEY, JSON.stringify(downloads));
 }
 
+async function loadContentSyncState() {
+  const plugins = getNativeAudioPlugins();
+  try {
+    const saved = plugins?.preferences
+      ? (await plugins.preferences.get({ key: QF_CONTENT_SYNC_STATE_KEY })).value
+      : localStorage.getItem(QF_CONTENT_SYNC_STATE_KEY);
+    contentSyncState = saved ? JSON.parse(saved) : {};
+  } catch (error) {
+    contentSyncState = {};
+    audioDiagnostic('Content Sync state load failed', { error: String(error) });
+  }
+  contentSyncStateLoaded = true;
+}
+
+async function saveContentSyncState(state) {
+  contentSyncState = state;
+  const plugins = getNativeAudioPlugins();
+  if (plugins?.preferences) {
+    await plugins.preferences.set({ key: QF_CONTENT_SYNC_STATE_KEY, value: JSON.stringify(state) });
+    return;
+  }
+  localStorage.setItem(QF_CONTENT_SYNC_STATE_KEY, JSON.stringify(state));
+}
+
 async function loadNativeAudioDownloads() {
   const plugins = getNativeAudioPlugins();
   try {
@@ -757,16 +849,24 @@ async function verifiedNativeAudio(surahNumber, remoteUrl) {
         trackId: `surah-${normalisedSurah}`,
         surah: normalisedSurah,
         reciter,
+        qfReciterId: QF_CHAPTER_RECITER_IDS[reciter],
         remoteUrl,
         localPath,
         status: 'complete',
         downloadedAt: item?.downloadedAt || new Date().toISOString(),
         bytes: stat.size ?? null,
+        // Files created before Content Sync are retained only so an online sync
+        // can replace them. They are never treated as compliant offline copies.
+        contentSync: item?.contentSync || { source: 'legacy' },
       };
       await saveNativeAudioDownloads(downloads);
       audioDiagnostic('rebuilt download metadata from local file', { ...diagnostic, stat });
     }
-    return { source: localAudioSrc(file.uri), missing: false, metadata: nativeAudioDownloads()[key] };
+    const metadata = nativeAudioDownloads()[key];
+    if (!contentSyncIsCurrent(metadata)) {
+      return { source: '', missing: false, requiresSync: true, metadata };
+    }
+    return { source: localAudioSrc(file.uri), missing: false, metadata };
   } catch (error) {
     audioDiagnostic('native download not found or invalid', { ...diagnostic, error: String(error) });
     if (item) await removeNativeAudioDownload(key);
@@ -793,7 +893,11 @@ async function playRecitation() {
     return;
   }
   if (!local.source && isNativeApp() && !navigator.onLine) {
-    status.textContent = local.missing ? 'Saved audio is missing or damaged. Connect to download it again.' : 'This recitation has not been downloaded on this device yet.';
+    status.textContent = local.missing
+      ? 'Saved audio is missing or damaged. Connect to download it again.'
+      : local.requiresSync
+        ? 'This saved recitation needs an online Content Sync check before it can play offline.'
+        : 'This recitation has not been downloaded on this device yet.';
     return;
   }
   const source = local.source || remoteUrl;
@@ -821,18 +925,38 @@ async function playRecitation() {
   if (!isLocal) saveRecitationForOffline(remoteUrl, current, reciter, status);
 }
 
-async function saveRecitationForOffline(url, surahNumber, reciterId, status) {
+async function saveRecitationForOffline(url, surahNumber, reciterId, status, options = {}) {
   const plugins = getNativeAudioPlugins();
   if (isNativeApp() && !plugins) {
-    status.textContent = 'Native audio storage is unavailable in this build. The recitation was not saved.';
+    if (status) status.textContent = 'Native audio storage is unavailable in this build. The recitation was not saved.';
     audioDiagnostic('native download prevented because plugins are unavailable', { reciter: reciterId, surah: Number(surahNumber) });
     return;
   }
+  const key = nativeAudioKey(reciterId, surahNumber);
+  const existing = nativeAudioDownloads()[key] || {};
+  let validation = options.validation;
+  try {
+    validation ||= await validateContentSyncTrack(reciterId, surahNumber, existing);
+  } catch (error) {
+    if (status) status.textContent = 'Offline saving needs a Content Sync check. Please try again while online.';
+    audioDiagnostic('Content Sync validation failed before download', { reciter: reciterId, surah: Number(surahNumber), error: String(error) });
+    return;
+  }
+  if (validation.action === 'delete') {
+    if (isNativeApp()) await removeNativeAudioDownload(key, true);
+    else await removeBrowserAudioDownload(url);
+    if (status) status.textContent = 'This recitation is no longer available for offline listening.';
+    return;
+  }
+  const contentSyncUrl = contentSyncAudioUrlFor(reciterId, surahNumber, validation.resource_id);
+  if (!contentSyncUrl) {
+    if (status) status.textContent = 'Offline saving is temporarily unavailable.';
+    return;
+  }
   if (plugins) {
-    const key = nativeAudioKey(reciterId, surahNumber);
     const localPath = nativeAudioPath(reciterId, surahNumber);
     try {
-      status.textContent = 'Downloading this surah for offline listening…';
+      if (status) status.textContent = options.background ? 'Updating saved recitation…' : 'Downloading this surah for offline listening…';
       try {
         await plugins.filesystem.mkdir({
           path: localPath.slice(0, localPath.lastIndexOf('/')),
@@ -844,7 +968,9 @@ async function saveRecitationForOffline(url, surahNumber, reciterId, status) {
       }
       const destination = await plugins.filesystem.getUri({ path: localPath, directory: NATIVE_AUDIO_DIRECTORY });
       if (!destination?.uri) throw new Error('Could not create a local audio destination');
-      await plugins.fileTransfer.downloadFile({ url, path: destination.uri, progress: false });
+      // The audio file itself is retrieved from a Content Sync snapshot through
+      // our Worker proxy. The protected QF URL never reaches the WebView.
+      await plugins.fileTransfer.downloadFile({ url: contentSyncUrl, path: destination.uri, progress: false });
       const stat = await plugins.filesystem.stat({ path: localPath, directory: NATIVE_AUDIO_DIRECTORY });
       audioDiagnostic('download Filesystem.stat result', { reciter: reciterId, surah: Number(surahNumber), key, localPath, stat });
       if (stat.size != null && Number(stat.size) <= 0) throw new Error('Downloaded audio file is empty');
@@ -856,20 +982,22 @@ async function saveRecitationForOffline(url, surahNumber, reciterId, status) {
         trackId: `surah-${surahNumber}`,
         surah: surahNumber,
         reciter: reciterId,
+        qfReciterId: QF_CHAPTER_RECITER_IDS[reciterId],
         remoteUrl: url,
         localPath,
         status: 'complete',
         downloadedAt: new Date().toISOString(),
         bytes: stat.size ?? null,
+        contentSync: contentSyncMetadata(validation),
       };
       await saveNativeAudioDownloads(downloads);
       if (surahNumber === current && reciterId === reciter) {
-        status.textContent = 'Saved on this device · available offline';
+        if (status) status.textContent = 'Saved on this device · available offline';
         await refreshListenDownloadStatus();
       }
     } catch (error) {
       await removeNativeAudioDownload(key, true);
-      if (surahNumber === current && reciterId === reciter) status.textContent = navigator.onLine ? 'Audio download could not be completed. Streaming is still available.' : 'Audio download paused. Connect to finish saving it.';
+      if (surahNumber === current && reciterId === reciter && status) status.textContent = navigator.onLine ? 'Audio download could not be completed. Streaming is still available.' : 'Audio download paused. Connect to finish saving it.';
     }
     return;
   }
@@ -880,17 +1008,63 @@ async function saveRecitationForOffline(url, surahNumber, reciterId, status) {
     const cache = await caches.open(AUDIO_CACHE_NAME);
     let response = await cache.match(url);
     if (!response) {
-      status.textContent = 'Downloading this surah for offline listening…';
-      response = await fetch(url, { mode: 'cors' });
+      if (status) status.textContent = 'Downloading this surah for offline listening…';
+      response = await fetch(contentSyncUrl, { mode: 'cors' });
       if (!response.ok) throw new Error('Audio download failed');
       await cache.put(url, response.clone());
     }
     if (surahNumber === current && reciterId === reciter) {
-      status.textContent = 'Saved on this device · available offline';
+      if (status) status.textContent = 'Saved on this device · available offline';
       await refreshListenDownloadStatus();
     }
   } catch {
     if (surahNumber === current && !navigator.onLine) status.textContent = 'Audio is not saved on this device yet.';
+  }
+}
+
+let nativeContentSyncInFlight = false;
+
+async function syncNativeDownloadedRecitations() {
+  if (!isNativeApp() || !navigator.onLine || nativeContentSyncInFlight) return;
+  nativeContentSyncInFlight = true;
+  try {
+    if (!nativeAudioRegistryLoaded) await loadNativeAudioDownloads();
+    const entries = Object.entries(nativeAudioDownloads())
+      .filter(([, item]) => item?.status === 'complete' && Number.isInteger(Number(item.surah)) && QF_CHAPTER_RECITER_IDS[item.reciter]);
+    for (const [key, item] of entries) {
+      if (!contentSyncNeedsCheck(item)) continue;
+      try {
+        const validation = await validateContentSyncTrack(item.reciter, item.surah, item);
+        if (validation.action === 'delete') {
+          await removeNativeAudioDownload(key, true);
+          continue;
+        }
+        const requiresReplacement = validation.action === 'replace' || !contentSyncIsCurrent(item);
+        if (requiresReplacement) {
+          await removeNativeAudioDownload(key, true);
+          await saveRecitationForOffline(
+            reciterAudioUrlFor(item.reciter, item.surah),
+            item.surah,
+            item.reciter,
+            item.surah === current && item.reciter === reciter ? $('#audio-status') : null,
+            { validation, background: true },
+          );
+          continue;
+        }
+        nativeAudioDownloads()[key] = {
+          ...item,
+          contentSync: contentSyncMetadata(validation),
+        };
+        await saveNativeAudioDownloads(nativeAudioDownloads());
+      } catch (error) {
+        // Keep the last valid copy until its seven-day validity window ends.
+        // A later online launch retries without disrupting normal reading.
+        audioDiagnostic('Content Sync refresh failed', { reciter: item.reciter, surah: item.surah, error: String(error) });
+      }
+    }
+  } finally {
+    nativeContentSyncInFlight = false;
+    await refreshListenDownloadStatus();
   }
 }
 
@@ -1068,9 +1242,11 @@ async function initialise() {
     if (!QF_CHAPTER_RECITER_IDS[reciter]) reciter = 'maher';
     $('#reciter-select').value = reciter;
     await loadNativeAudioDownloads();
+    await loadContentSyncState();
     // Re-check the current deterministic path at launch. This repairs a missing
     // registry entry when the MP3 survived but WebView storage did not.
     if (isNativeApp()) await verifiedNativeAudio(current, reciterAudioUrl(current));
+    if (isNativeApp() && navigator.onLine) void syncNativeDownloadedRecitations();
     renderList();
     renderJuzList();
     switchLibrary(activeLibrary);
@@ -1160,7 +1336,7 @@ $('#listen-download-action').onclick = async () => {
   const key = nativeAudioKey(reciter, current);
   const url = reciterAudioUrl(current);
   const downloaded = isNativeApp()
-    ? nativeAudioDownloads()[key]?.status === 'complete'
+    ? contentSyncIsCurrent(nativeAudioDownloads()[key])
     : await browserAudioIsDownloaded(url);
   if (downloaded) {
     if (isNativeApp()) await removeNativeAudioDownload(key, true);
@@ -1172,6 +1348,9 @@ $('#listen-download-action').onclick = async () => {
   if (url) await saveRecitationForOffline(url, current, reciter, $('#audio-status'));
   await refreshListenDownloadStatus();
 };
+window.addEventListener('online', () => {
+  if (isNativeApp()) void syncNativeDownloadedRecitations();
+});
 $('#listen-surah-select').onchange = async (event) => {
   await loadSurah(Number(event.target.value), 1, false);
   openListenPage();
