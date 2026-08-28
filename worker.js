@@ -110,34 +110,6 @@ function chapterAudioRecord(records, chapterNumber) {
   )) || null;
 }
 
-function canonicalLabel(value) {
-  return String(value || "")
-    .normalize("NFKD")
-    .replace(/\[[^\]]*\]|\([^)]*\)/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, "")
-    .toLowerCase();
-}
-
-function recordLabels(record, fields) {
-  return fields.flatMap((field) => {
-    const value = field.split(".").reduce((current, key) => current?.[key], record);
-    const label = canonicalLabel(value);
-    return label ? [label] : [];
-  });
-}
-
-function matchingRecitationResource(chapterReciter, recitations) {
-  const chapterLabels = new Set(recordLabels(chapterReciter, ["name", "translated_name.name"]));
-  const chapterStyle = canonicalLabel(chapterReciter?.style?.name || chapterReciter?.style?.translated_name?.name);
-  const candidates = (recitations || []).filter((recitation) => {
-    const recitationLabels = recordLabels(recitation, ["reciter_name", "translated_name.name"]);
-    const hasNameMatch = recitationLabels.some((label) => chapterLabels.has(label));
-    const recitationStyle = canonicalLabel(recitation?.style);
-    return hasNameMatch && (!chapterStyle || !recitationStyle || chapterStyle === recitationStyle);
-  });
-  return candidates.length === 1 ? candidates[0] : null;
-}
-
 function contentSyncPath(path) {
   // Content Sync returns relative `/api/v4/...` paths. qfRequest addresses the
   // API gateway root, so add `/content` before forwarding them upstream.
@@ -235,9 +207,34 @@ async function syncContentResource(env, resourceId, syncToken, reciterId, chapte
 }
 
 async function discoverContentSyncResource(env, reciterId) {
-  // QF documents chapter-reciter and recitation resource IDs as separate ID
-  // spaces. Resolve the canonical Content Sync resource using the official
-  // reciter metadata (name + style), then bootstrap only that resource.
+  // Do not infer a mapping from names or styles. The temporary catalogue
+  // diagnostic below must establish the authoritative snapshot relationship
+  // before a canonical resource mapping is enabled.
+  throw new ContentSyncError("content_sync.discovery.catalogue_mapping_required", 404, null, {
+    matched_chapter_reciter_id: reciterId,
+    matching_resource_found: false,
+    chapter_audio_file_found: false,
+  });
+}
+
+function publicChapterAudioSummary(records, resourceId, recitation) {
+  const chapterRows = (records || []).filter((record) => record?.record_type === "chapter_audio_file");
+  const ids = (field) => [...new Set(chapterRows
+    .map((record) => Number(record?.[field]))
+    .filter((value) => Number.isInteger(value) && value > 0))];
+  return {
+    resource_id: resourceId,
+    candidate_display_name: recitation?.reciter_name || recitation?.translated_name?.name || null,
+    candidate_style: recitation?.style || null,
+    snapshot_has_chapter_audio_file_rows: chapterRows.length > 0,
+    has_requested_surah: false,
+    audio_recitation_ids: ids("audio_recitation_id"),
+    chapter_reciter_ids: ids("chapter_reciter_id"),
+    reciter_ids: ids("reciter_id"),
+  };
+}
+
+async function contentSyncCandidateDiagnostics(env, reciterId, chapterNumber) {
   const [chapterResponse, recitationResponse] = await Promise.all([
     qfRequest(env, "/content/api/v4/resources/chapter_reciters", "content_sync.chapter_reciters"),
     qfRequest(env, "/content/api/v4/resources/recitations", "content_sync.recitations"),
@@ -245,13 +242,55 @@ async function discoverContentSyncResource(env, reciterId) {
   const chapterPayload = await chapterResponse.json();
   const recitationPayload = await recitationResponse.json();
   const chapterReciter = (chapterPayload?.reciters || []).find((candidate) => Number(candidate.id) === reciterId);
-  const resource = matchingRecitationResource(chapterReciter, recitationPayload?.recitations);
-  if (resource && Number.isInteger(Number(resource.id)) && Number(resource.id) > 0) return Number(resource.id);
-  throw new ContentSyncError("content_sync.discovery.no_matching_resource", 404, null, {
-    matched_chapter_reciter_id: reciterId,
-    matching_resource_found: false,
-    chapter_audio_file_found: false,
-  });
+  if (!chapterReciter) {
+    throw new ContentSyncError("content_sync.chapter_reciters.not_found", 404, null, {
+      matched_chapter_reciter_id: reciterId,
+    });
+  }
+  const recitationsById = new Map((recitationPayload?.recitations || [])
+    .map((recitation) => [Number(recitation.id), recitation])
+    .filter(([id]) => Number.isInteger(id) && id > 0));
+
+  let nextPath = `/content/api/v4/resources/sync?${new URLSearchParams({
+    bootstrap: "true",
+    resources: `${CONTENT_SYNC_RESOURCE_GROUP}:*`,
+    per_page: "100",
+  })}`;
+  const candidates = [];
+  while (nextPath) {
+    const response = await qfRequest(env, contentSyncPath(nextPath), "content_sync.diagnostic_bootstrap");
+    const payload = await response.json();
+    const sync = payload?.sync;
+    if (!sync || !Array.isArray(sync.mutations)) throw new ContentSyncError("content_sync.diagnostic_bootstrap.invalid_response");
+    for (const mutation of sync.mutations) {
+      if (mutation.type !== "RESOURCE_CREATE" || mutation.resource_group !== CONTENT_SYNC_RESOURCE_GROUP || !mutation.snapshot_url) continue;
+      const resourceId = Number(mutation.resource_id);
+      const snapshotResponse = await qfRequest(env, contentSyncPath(mutation.snapshot_url), "content_sync.diagnostic_snapshot");
+      const snapshot = await snapshotResponse.json();
+      const candidate = publicChapterAudioSummary(snapshot?.records, resourceId, recitationsById.get(resourceId));
+      candidate.has_requested_surah = Boolean(chapterAudioRecord(snapshot?.records, chapterNumber));
+      candidates.push(candidate);
+    }
+    if (!sync.has_more) break;
+    if (!sync.next_page_url) throw new ContentSyncError("content_sync.diagnostic_bootstrap.incomplete");
+    nextPath = contentSyncPath(sync.next_page_url);
+  }
+
+  return {
+    diagnostic: {
+      stage: "content_sync.candidate_catalogue",
+      http_status: 200,
+      qf_error_code: null,
+      matched_chapter_reciter_id: reciterId,
+      chapter_reciter_display_name: chapterReciter.name || chapterReciter.translated_name?.name || null,
+      chapter_reciter_style: chapterReciter.style?.name || chapterReciter.style?.translated_name?.name || null,
+      matching_resource_found: candidates.some((candidate) => candidate.audio_recitation_ids.includes(reciterId)
+        || candidate.chapter_reciter_ids.includes(reciterId)
+        || candidate.reciter_ids.includes(reciterId)),
+      chapter_audio_file_found: candidates.some((candidate) => candidate.has_requested_surah),
+      candidates,
+    },
+  };
 }
 
 async function contentSyncValidation(env, reciterId, chapterNumber, state = {}) {
@@ -371,6 +410,11 @@ export default {
       const exposeDiagnostics = url.searchParams.get("diagnostics") === "1";
       if (!validChapterAudioRequest(reciterId, chapterNumber)) return safeApiError("Requested recitation is unavailable", 404);
       try {
+        if (url.searchParams.get("diagnostics") === "candidates") {
+          return Response.json(await contentSyncCandidateDiagnostics(env, reciterId, chapterNumber), {
+            headers: apiHeaders({ "Cache-Control": "no-store" }),
+          });
+        }
         const body = await request.json().catch(() => ({}));
         const validation = await contentSyncValidation(env, reciterId, chapterNumber, body?.state || {});
         if (exposeDiagnostics) {
