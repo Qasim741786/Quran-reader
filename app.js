@@ -6,6 +6,7 @@ const template = $('#verse-template');
 let chapters = [];
 let tafsirChapters = [];
 let recitationData = {};
+const officialChapterTimings = new Map();
 let current = Number(localStorage.getItem('quran-last-surah')) || 1;
 let lastReadAyah = Number(localStorage.getItem('quran-last-ayah')) || 1;
 const ARABIC_SIZE_MIN = 16;
@@ -23,6 +24,8 @@ let readingMode = localStorage.getItem('quran-reading-mode') || 'both';
 const AUDIO_CACHE_NAME = 'quran-reader-audio-v2';
 const NATIVE_AUDIO_DOWNLOADS_KEY = 'quran-native-recitation-downloads-v1';
 const NATIVE_AUDIO_DIRECTORY = 'DATA';
+const QF_CHAPTER_RECITER_IDS = Object.freeze({ maher: 159, 'abdul-basit': 1, minshawi: 8 });
+const QF_WORKER_ORIGIN = 'https://quran-reader.muhammedwaheed741.workers.dev';
 let preparedAudioSurah = 0;
 let reciter = localStorage.getItem('quran-reciter') || 'maher';
 let highlightedAyah = 0;
@@ -351,16 +354,17 @@ async function downloadedRecitationEntries() {
   try {
     const cache = await caches.open(AUDIO_CACHE_NAME);
     const cachedUrls = new Set((await cache.keys()).map((request) => request.url));
-    return Object.entries(recitationData).flatMap(([reciterId, reciterData]) => (reciterData.audioUrls || [])
-      .map((remoteUrl, index) => ({
+    return Object.keys(QF_CHAPTER_RECITER_IDS).flatMap((reciterId) => Array.from({ length: 114 }, (_, index) => {
+      const remoteUrl = reciterAudioUrlFor(reciterId, index + 1);
+      return {
         key: `${reciterId}:${index + 1}`,
         trackId: `surah-${index + 1}`,
         surah: index + 1,
         reciter: reciterId,
         remoteUrl,
         storage: 'browser',
-      }))
-      .filter((item) => cachedUrls.has(item.remoteUrl)));
+      };
+    }).filter((item) => cachedUrls.has(new URL(item.remoteUrl, location.origin).href)));
   } catch {
     return [];
   }
@@ -583,8 +587,49 @@ function syncAudioControls() {
   if (!isScrubbingAudio) seek.value = String(Math.min(audio.currentTime || 0, duration || 0));
 }
 
+function qfApiUrl(path) {
+  // Capacitor serves bundled files from capacitor://localhost, not from the
+  // Worker. Native playback and local development therefore need the public
+  // Worker origin; deployed web/PWA requests stay same-origin.
+  const localHost = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname);
+  return isNativeApp() || localHost ? new URL(path, QF_WORKER_ORIGIN).toString() : path;
+}
+
+function reciterAudioUrlFor(reciterId, surahNumber) {
+  const qfReciterId = QF_CHAPTER_RECITER_IDS[reciterId];
+  const chapterNumber = Number(surahNumber);
+  if (!qfReciterId || !Number.isInteger(chapterNumber) || chapterNumber < 1 || chapterNumber > 114) return '';
+  return qfApiUrl(`/api/qf/chapter-audio/${qfReciterId}/${chapterNumber}/file`);
+}
+
 function reciterAudioUrl(surahNumber) {
-  return recitationData[reciter]?.audioUrls?.[surahNumber - 1] || '';
+  return reciterAudioUrlFor(reciter, surahNumber);
+}
+
+async function loadOfficialChapterTimings(reciterId, surahNumber) {
+  const qfReciterId = QF_CHAPTER_RECITER_IDS[reciterId];
+  const chapterNumber = Number(surahNumber);
+  if (!qfReciterId || !Number.isInteger(chapterNumber)) return;
+  const key = `${reciterId}:${chapterNumber}`;
+  if (officialChapterTimings.has(key)) return;
+  try {
+    const response = await fetch(qfApiUrl(`/api/qf/chapter-audio/${qfReciterId}/${chapterNumber}`));
+    if (!response.ok) throw new Error('Official recitation metadata unavailable');
+    const payload = await response.json();
+    const timings = (payload.timestamps || [])
+      .map((timestamp) => ({
+        time_from: Number(timestamp.timestamp_from),
+        time_to: Number(timestamp.timestamp_to),
+        duration: Number(timestamp.duration),
+        segments: timestamp.segments || [],
+      }))
+      .filter((timestamp) => Number.isFinite(timestamp.time_from) && Number.isFinite(timestamp.time_to));
+    if (timings.length) officialChapterTimings.set(key, timings);
+  } catch (error) {
+    // The bundled timing data remains the fallback. Do not block playback if
+    // official timing metadata is temporarily unavailable.
+    audioDiagnostic('official chapter timing unavailable', { reciter: reciterId, surah: chapterNumber, error: String(error) });
+  }
 }
 
 function isNativeApp() {
@@ -738,6 +783,10 @@ async function playRecitation() {
     return;
   }
 
+  // Fetch QF's matching chapter timestamps in the background before playback.
+  // Existing bundled timings remain the safe fallback until this succeeds.
+  await loadOfficialChapterTimings(reciter, current);
+
   const local = await verifiedNativeAudio(current, remoteUrl);
   if (local.nativeUnavailable) {
     status.textContent = 'Native audio storage is unavailable in this build. Please update the app.';
@@ -846,7 +895,8 @@ async function saveRecitationForOffline(url, surahNumber, reciterId, status) {
 }
 
 function ayahAtPlaybackTime(seconds, duration) {
-  const timings = recitationData[reciter]?.chapters?.[current - 1];
+  const timings = officialChapterTimings.get(`${reciter}:${current}`)
+    || recitationData[reciter]?.chapters?.[current - 1];
   if (!timings?.length || !Number.isFinite(seconds)) return 0;
   const milliseconds = seconds * 1000;
   let previousAyah = 0;
