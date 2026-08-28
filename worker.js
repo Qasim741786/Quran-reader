@@ -1,6 +1,6 @@
 let cachedToken = null;
 let tokenExpiresAt = 0;
-const SUPPORTED_CHAPTER_RECITERS = new Set([159, 1, 9]);
+const SUPPORTED_CHAPTER_RECITERS = new Set([159, 1, 9, 174]);
 
 async function getQfToken(env) {
   const now = Date.now();

@@ -24,7 +24,7 @@ let readingMode = localStorage.getItem('quran-reading-mode') || 'both';
 const AUDIO_CACHE_NAME = 'quran-reader-audio-v2';
 const NATIVE_AUDIO_DOWNLOADS_KEY = 'quran-native-recitation-downloads-v1';
 const NATIVE_AUDIO_DIRECTORY = 'DATA';
-const QF_CHAPTER_RECITER_IDS = Object.freeze({ maher: 159, 'abdul-basit': 1, minshawi: 9 });
+const QF_CHAPTER_RECITER_IDS = Object.freeze({ maher: 159, 'abdul-basit': 1, minshawi: 9, yasser: 174 });
 const QF_WORKER_ORIGIN = 'https://quran-reader.muhammedwaheed741.workers.dev';
 let preparedAudioSurah = 0;
 let reciter = localStorage.getItem('quran-reciter') || 'maher';
@@ -1065,7 +1065,7 @@ async function initialise() {
     $('#listen-surah-select').innerHTML = chapters.map((chapter) => `<option value="${chapter.number}">${chapter.number}. ${escapeHtml(chapter.englishName)}</option>`).join('');
     if (tafsirResponse.ok) tafsirChapters = (await tafsirResponse.json()).chapters || [];
     if (timingResponse.ok) recitationData = (await timingResponse.json()).reciters || {};
-    if (!recitationData[reciter]) reciter = 'maher';
+    if (!QF_CHAPTER_RECITER_IDS[reciter]) reciter = 'maher';
     $('#reciter-select').value = reciter;
     await loadNativeAudioDownloads();
     // Re-check the current deterministic path at launch. This repairs a missing
