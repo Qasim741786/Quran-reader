@@ -3,6 +3,21 @@ let tokenExpiresAt = 0;
 const SUPPORTED_CHAPTER_RECITERS = new Set([159, 1, 9, 174]);
 const CONTENT_SYNC_RESOURCE_GROUP = "recitations";
 
+class ContentSyncError extends Error {
+  constructor(stage, status = 502, qfCode = null, details = {}) {
+    super(stage);
+    this.stage = stage;
+    this.status = status;
+    this.qfCode = qfCode;
+    this.details = details;
+  }
+}
+
+function safeQfCode(payload) {
+  const value = payload?.type || payload?.error?.code || null;
+  return typeof value === "string" && /^[a-z0-9_-]{1,80}$/i.test(value) ? value : null;
+}
+
 async function getQfToken(env) {
   const now = Date.now();
 
@@ -25,7 +40,8 @@ async function getQfToken(env) {
   );
 
   if (!response.ok) {
-    throw new Error(`Quran Foundation authentication failed: ${response.status}`);
+    const payload = await response.clone().json().catch(() => null);
+    throw new ContentSyncError("oauth_token", response.status, safeQfCode(payload));
   }
 
   const data = await response.json();
@@ -36,21 +52,27 @@ async function getQfToken(env) {
   return cachedToken;
 }
 
-async function qfRequest(env, path) {
+async function qfRequest(env, path, stage = "qf_request") {
   const token = await getQfToken(env);
 
-  const response = await fetch(
-    `https://apis.quran.foundation${path}`,
-    {
-      headers: {
-        "x-auth-token": token,
-        "x-client-id": env.QF_CLIENT_ID,
-      },
-    }
-  );
+  let response;
+  try {
+    response = await fetch(
+      `https://apis.quran.foundation${path}`,
+      {
+        headers: {
+          "x-auth-token": token,
+          "x-client-id": env.QF_CLIENT_ID,
+        },
+      }
+    );
+  } catch {
+    throw new ContentSyncError(stage, 502, "network_error");
+  }
 
   if (!response.ok) {
-    throw new Error(`Quran Foundation API failed: ${response.status}`);
+    const payload = await response.clone().json().catch(() => null);
+    throw new ContentSyncError(stage, response.status, safeQfCode(payload));
   }
 
   return response;
@@ -103,6 +125,7 @@ async function getContentSyncSnapshot(env, resourceId) {
   const response = await qfRequest(
     env,
     `/content/api/v4/resources/snapshots/${CONTENT_SYNC_RESOURCE_GROUP}/${resourceId}`,
+    "content_sync.snapshot",
   );
   return response.json();
 }
@@ -122,7 +145,7 @@ async function syncContentResource(env, resourceId, syncToken, reciterId, chapte
   let relevantRowChanged = false;
 
   while (nextPath) {
-    const response = await qfRequest(env, contentSyncPath(nextPath));
+    const response = await qfRequest(env, contentSyncPath(nextPath), syncToken ? "content_sync.incremental" : "content_sync.bootstrap");
     const payload = await response.json();
     const sync = payload?.sync;
     if (!sync || !Array.isArray(sync.mutations)) throw new Error("Invalid Content Sync response");
@@ -139,7 +162,7 @@ async function syncContentResource(env, resourceId, syncToken, reciterId, chapte
 
       if (mutation.type === "RESOURCE_CREATE" || mutation.type === "RESOURCE_INVALIDATE") {
         if (!mutation.snapshot_url) throw new Error("Content Sync change has no snapshot");
-        const snapshotResponse = await qfRequest(env, contentSyncPath(mutation.snapshot_url));
+        const snapshotResponse = await qfRequest(env, contentSyncPath(mutation.snapshot_url), "content_sync.snapshot");
         const snapshot = await snapshotResponse.json();
         currentRecord = chapterAudioRecord(snapshot?.records, reciterId, chapterNumber);
         resourceDeleted = false;
@@ -196,13 +219,13 @@ async function discoverContentSyncResource(env, reciterId, chapterNumber) {
   })}`;
 
   while (nextPath) {
-    const response = await qfRequest(env, contentSyncPath(nextPath));
+    const response = await qfRequest(env, contentSyncPath(nextPath), "content_sync.discovery");
     const payload = await response.json();
     const sync = payload?.sync;
     if (!sync || !Array.isArray(sync.mutations)) throw new Error("Invalid Content Sync discovery response");
     for (const mutation of sync.mutations) {
       if (mutation.type !== "RESOURCE_CREATE" || mutation.resource_group !== CONTENT_SYNC_RESOURCE_GROUP || !mutation.snapshot_url) continue;
-      const snapshotResponse = await qfRequest(env, contentSyncPath(mutation.snapshot_url));
+      const snapshotResponse = await qfRequest(env, contentSyncPath(mutation.snapshot_url), "content_sync.discovery_snapshot");
       const snapshot = await snapshotResponse.json();
       const record = chapterAudioRecord(snapshot?.records, reciterId, chapterNumber);
       if (record) return Number(mutation.resource_id);
@@ -211,7 +234,10 @@ async function discoverContentSyncResource(env, reciterId, chapterNumber) {
     if (!sync.next_page_url) throw new Error("Content Sync discovery pagination is incomplete");
     nextPath = contentSyncPath(sync.next_page_url);
   }
-  throw new Error("No Content Sync recitation resource is available");
+  throw new ContentSyncError("content_sync.discovery.no_matching_resource", 404, null, {
+    matching_resource_found: false,
+    chapter_audio_file_found: false,
+  });
 }
 
 async function contentSyncValidation(env, reciterId, chapterNumber, state = {}) {
@@ -263,6 +289,30 @@ function safeApiError(message, status = 502) {
   });
 }
 
+function safeContentSyncError(error, exposeDiagnostics = false, message = "Recitation sync is temporarily unavailable") {
+  const diagnostic = error instanceof ContentSyncError
+    ? {
+      stage: error.stage,
+      http_status: error.status,
+      qf_error_code: error.qfCode,
+      matching_resource_found: Boolean(error.details?.matching_resource_found),
+      chapter_audio_file_found: Boolean(error.details?.chapter_audio_file_found),
+    }
+    : {
+      stage: "content_sync.unexpected",
+      http_status: 502,
+      qf_error_code: null,
+      matching_resource_found: false,
+      chapter_audio_file_found: false,
+    };
+  const body = { error: message };
+  if (exposeDiagnostics) body.diagnostic = diagnostic;
+  return Response.json(body, {
+    status: diagnostic.http_status >= 400 && diagnostic.http_status < 600 ? diagnostic.http_status : 502,
+    headers: apiHeaders({ "Cache-Control": "no-store" }),
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -301,13 +351,25 @@ export default {
     if (contentSyncMatch && request.method === "POST") {
       const reciterId = Number(contentSyncMatch[1]);
       const chapterNumber = Number(contentSyncMatch[2]);
+      const exposeDiagnostics = url.searchParams.get("diagnostics") === "1";
       if (!validChapterAudioRequest(reciterId, chapterNumber)) return safeApiError("Requested recitation is unavailable", 404);
       try {
         const body = await request.json().catch(() => ({}));
         const validation = await contentSyncValidation(env, reciterId, chapterNumber, body?.state || {});
+        if (exposeDiagnostics) {
+          return Response.json({
+            diagnostic: {
+              stage: "content_sync.complete",
+              http_status: 200,
+              qf_error_code: null,
+              matching_resource_found: true,
+              chapter_audio_file_found: Boolean(validation.record_key),
+            },
+          }, { headers: apiHeaders({ "Cache-Control": "no-store" }) });
+        }
         return Response.json(validation, { headers: apiHeaders({ "Cache-Control": "no-store" }) });
-      } catch {
-        return safeApiError("Recitation sync is temporarily unavailable");
+      } catch (error) {
+        return safeContentSyncError(error, exposeDiagnostics);
       }
     }
 
@@ -322,7 +384,12 @@ export default {
       try {
         const snapshot = await getContentSyncSnapshot(env, resourceId);
         const record = chapterAudioRecord(snapshot?.records, reciterId, chapterNumber);
-        if (!record) return safeApiError("Requested recitation is unavailable", 404);
+        if (!record) {
+          return safeContentSyncError(new ContentSyncError("content_sync.snapshot.chapter_audio_not_found", 404, null, {
+            matching_resource_found: true,
+            chapter_audio_file_found: false,
+          }), url.searchParams.get("diagnostics") === "1", "Recitation audio is temporarily unavailable");
+        }
         const upstreamHeaders = new Headers();
         const range = request.headers.get("Range");
         if (range) upstreamHeaders.set("Range", range);
@@ -334,8 +401,8 @@ export default {
           if (value) headers.set(name, value);
         }
         return new Response(upstream.body, { status: upstream.status, headers });
-      } catch {
-        return safeApiError("Recitation audio is temporarily unavailable");
+      } catch (error) {
+        return safeContentSyncError(error, url.searchParams.get("diagnostics") === "1", "Recitation audio is temporarily unavailable");
       }
     }
 
