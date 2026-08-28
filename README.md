@@ -1,4 +1,4 @@
-# Quran Reader
+# Nur
 
 An installable, offline-first Quran reader with IndoPak text, embedded waqf/wasl markings, English translation, and a bundled Quran dataset.
 
@@ -38,6 +38,37 @@ Cloudflare will provide a secure address like `https://quran-reader.pages.dev`. 
 2. Tap **Share**.
 3. Select **Add to Home Screen**, then tap **Add**.
 4. Open the new Quran icon from your Home Screen. Once opened, the reader’s Quran data and font are cached for offline use.
+
+## Publish to the Apple App Store
+
+This project now includes a Capacitor iOS wrapper. The Quran, translation, tafsir, IndoPak font, icons, and reader code are copied into the native app at build time, so reading works without a network connection from the first launch of the installed iOS app.
+
+### One-time setup
+
+1. Install the full [Xcode](https://apps.apple.com/app/xcode/id497799835) app from the Mac App Store and open it once to accept its licence.
+2. Join the [Apple Developer Program](https://developer.apple.com/programs/enroll/) before uploading a public App Store build.
+3. From this folder, run:
+
+   ```bash
+   npm install
+   npm run ios:open
+   ```
+
+   This refreshes `ios/App/App/public` from the local reader files and opens the Xcode workspace.
+
+### In Xcode
+
+1. Select the **App** target, then **Signing & Capabilities**.
+2. Choose your Apple Developer **Team** and keep (or change) the unique bundle identifier `com.qasimwaheed.quranreader`.
+3. Set the version and build number under **General**.
+4. Choose an iPhone simulator or connected iPhone and press Run to test. Turn on Airplane Mode: the reader, all 114 surahs, translation, tafsir, tajweed text, and font should still work.
+5. Select **Product → Archive**, then **Distribute App → App Store Connect → Upload**.
+
+### App Store Connect
+
+Create the app record in [App Store Connect](https://appstoreconnect.apple.com/), attach the uploaded build, add a 1024×1024 icon, iPhone screenshots, description, support URL, privacy details, and submit it to TestFlight before App Review.
+
+Before a public release, confirm you have redistribution permission for every recitation, tafsir, and translation included in the app. Audio currently streams when it has not been cached; it is not part of the 32 MB offline reader bundle.
 
 ## Optional custom domain
 

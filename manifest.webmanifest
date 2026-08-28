@@ -1,8 +1,8 @@
 {
-  "name": "Quran Reader",
-  "short_name": "Quran",
-  "description": "Read the Quran offline with IndoPak script and translation.",
-  "start_url": "/#reader",
+  "name": "Nur",
+  "short_name": "Nur",
+  "description": "Read, listen to and reflect on the Quran offline.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0d312c",

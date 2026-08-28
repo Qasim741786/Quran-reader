@@ -2,27 +2,57 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0b302b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Quran" />
+    <meta name="apple-mobile-web-app-title" content="Nur" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/assets/icon-180.png" />
     <link rel="stylesheet" href="/styles.css" />
-    <title>Quran | Read with meaning</title>
+    <title>Nur | Read · Listen · Reflect</title>
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar" aria-label="Main navigation">
+      <section class="home-screen" id="home-screen" aria-label="Nur home">
+        <button class="theme-quick-toggle home-theme-toggle" data-theme-toggle aria-label="Enable dark mode">☾</button>
+        <div class="home-inner">
+          <header class="nur-branding">
+            <p class="nur-wordmark">Nur</p>
+            <p class="nur-tagline">Read · Listen · Reflect</p>
+            <p class="developer-signature" lang="ar" dir="rtl">زيب النساء</p>
+          </header>
+          <section class="home-section continue-reading" aria-labelledby="continue-title">
+            <p class="section-label">CONTINUE READING</p>
+            <button class="home-row home-primary" id="home-continue" type="button"><span><strong id="home-last-surah">Al-Fatihah</strong><small id="home-last-verse">Verse 1</small></span><span aria-hidden="true">›</span></button>
+          </section>
+          <nav class="home-section home-navigation" aria-label="Main navigation">
+            <p class="section-label">QURAN</p>
+            <button class="home-row" data-home-action="read" type="button"><span class="home-icon">۝</span><span><strong>Read Quran</strong><small>Continue in the reader</small></span><span aria-hidden="true">›</span></button>
+            <button class="home-row" data-home-action="browse" type="button"><span class="home-icon">☷</span><span><strong>Surahs &amp; Juz</strong><small>Browse the Quran</small></span><span aria-hidden="true">›</span></button>
+            <button class="home-row" data-home-action="listen" type="button"><span class="home-icon">▶</span><span><strong>Listen</strong><small>Choose a reciter</small></span><span aria-hidden="true">›</span></button>
+            <button class="home-row" data-home-action="downloads" type="button"><span class="home-icon">↓</span><span><strong>Downloads</strong><small>Offline audio</small></span><span aria-hidden="true">›</span></button>
+          </nav>
+          <nav class="home-section home-navigation" aria-label="Library and settings">
+            <p class="section-label">LIBRARY</p>
+            <button class="home-row" data-home-action="bookmarks" type="button"><span class="home-icon">♡</span><span><strong>Bookmarks</strong><small>Saved ayahs</small></span><span aria-hidden="true">›</span></button>
+            <button class="home-row" data-home-action="settings" type="button"><span class="home-icon">⚙</span><span><strong>Settings</strong><small>Appearance and preferences</small></span><span aria-hidden="true">›</span></button>
+          </nav>
+        </div>
+      </section>
+      <button class="drawer-backdrop" id="drawer-backdrop" aria-label="Close navigation" hidden></button>
+      <aside class="sidebar" id="main-drawer" aria-label="Main navigation">
+        <button class="drawer-close" id="drawer-close" aria-label="Close navigation">×</button>
         <a class="brand" href="#reader" aria-label="Quran home">
           <span class="brand-mark">۝</span><span>Quran</span>
         </a>
         <nav>
-          <a class="nav-item active" href="#reader"><span>⌂</span> Read</a>
-          <a class="nav-item" href="#surahs"><span>☷</span> Surahs</a>
-          <a class="nav-item" href="#bookmarks"><span>♧</span> Bookmarks</a>
-          <a class="nav-item" href="#settings"><span>⚙</span> Settings</a>
+          <button class="nav-item active" data-drawer-action="read"><span>⌂</span> Read</button>
+          <button class="nav-item" data-drawer-action="browse"><span>☷</span> Surahs &amp; Juz</button>
+          <button class="nav-item" data-drawer-action="bookmarks"><span>♡</span> Bookmarks</button>
+          <button class="nav-item" data-drawer-action="downloads"><span>↓</span> Downloads</button>
+          <button class="nav-item" data-drawer-action="settings"><span>⚙</span> Settings</button>
+          <button class="nav-item" data-drawer-action="about"><span>ⓘ</span> About</button>
         </nav>
         <div class="continue-card">
           <p>CONTINUE READING</p>
@@ -34,14 +64,13 @@
         <p class="sidebar-note">Read with reflection</p>
       </aside>
 
-      <main id="reader">
+      <main id="reader" hidden>
         <header class="topbar">
-          <button class="icon-button mobile-menu" aria-label="Open menu">☰</button>
-          <div class="crumb"><span>Quran</span><b>/</b><strong id="crumb-surah">Al-Fatihah</strong></div>
+          <button class="icon-button reader-back" id="reader-back" aria-label="Return to Nur home">‹</button>
+          <div class="reader-title"><strong id="crumb-surah">Al-Fatihah</strong><span id="reader-meta-title">1 · The Opening</span></div>
           <div class="header-actions">
-            <button class="icon-button search-trigger" aria-label="Search chapters">⌕</button>
-            <button class="icon-button theme-toggle" id="theme-toggle" aria-label="Enable dark mode">☾</button>
-            <button class="avatar" aria-label="Profile">Q</button>
+            <button class="icon-button" data-theme-toggle aria-label="Enable dark mode">☾</button>
+            <button class="icon-button" id="reader-bookmarks" aria-label="Open bookmarks">♡</button>
           </div>
         </header>
 
@@ -52,7 +81,20 @@
             <div class="surah-list" id="surah-list" aria-label="All Quran chapters"><div class="loader">Loading all surahs…</div></div>
             <div class="juz-list" id="juz-list" aria-label="All Quran juz"></div>
           </section>
-          <div class="reader-shortcuts"><button class="library-toggle" id="library-toggle" aria-expanded="true"><span>☷</span> Browse Quran</button><span class="reading-hint">Surahs & Juz</span></div>
+          <div class="reader-shortcuts"><button class="library-toggle" id="library-toggle" aria-expanded="true"><span>☷</span> Browse Quran</button><span class="reading-hint">Surahs &amp; Juz</span></div>
+          <section class="utility-panel" id="utility-panel" hidden aria-live="polite"></section>
+          <section class="listen-page" id="listen-page" hidden aria-label="Listen to the Quran">
+            <header class="listen-page-header"><button class="listen-page-back" id="listen-page-back" type="button">‹ Back</button><h1>Listen</h1><span aria-hidden="true"></span></header>
+            <div class="listen-art" aria-hidden="true"><span>NUR</span><small id="listen-art-number">SURAH 1</small><b>۝</b></div>
+            <button class="listen-surah-summary" id="listen-surah-picker" type="button"><span><strong id="listen-page-title">Al-Fatihah</strong><small id="listen-page-meaning">The Opening</small></span><b aria-hidden="true">›</b></button>
+            <button class="listen-reciter-summary" id="listen-reciter-picker" type="button"><span id="listen-reciter-name">Shaykh Maher Al-Muaiqly</span><b aria-hidden="true">›</b></button>
+            <select id="listen-surah-select" aria-label="Choose surah for recitation" hidden></select>
+            <div class="listen-audio-slot" id="listen-audio-slot"></div>
+            <div class="listen-chapter-nav"><button id="listen-previous-surah" type="button" aria-label="Previous surah">◀</button><button id="listen-next-surah" type="button" aria-label="Next surah">▶</button></div>
+            <button class="listen-download-action" id="listen-download-action" type="button">Download for Offline <span aria-hidden="true">↓</span></button>
+            <section class="listen-selection-sheet" id="listen-selection-sheet" hidden aria-modal="true" role="dialog" aria-labelledby="listen-selection-title"><header><h2 id="listen-selection-title">Choose Surah</h2><button id="listen-selection-close" type="button" aria-label="Close selection">×</button></header><input id="listen-selection-search" type="search" placeholder="Search surah" aria-label="Search selection" /><div id="listen-selection-list"></div></section>
+          </section>
+          <div class="reader-content" id="reader-content">
           <div class="surah-heading">
             <div class="surah-number" id="surah-number">01</div>
             <div>
@@ -60,11 +102,21 @@
               <h1 id="surah-name">Al-Fatihah</h1>
               <p class="subtitle" id="surah-english">The Opening</p>
             </div>
-            <button class="listen-button" id="listen-button" aria-label="Listen to this surah"><span>▶</span> Listen</button>
           </div>
+          <div class="reader-toolbar"><button class="reader-options-button" id="reader-options-button" type="button" aria-expanded="false"><span>☷</span> Reader Options <b aria-hidden="true">▾</b></button>
+          <section class="reader-options-sheet" id="reader-options-sheet" hidden aria-label="Reader options">
+            <header class="reader-options-header"><div><p class="section-label">READER OPTIONS</p><h2>Reading preferences</h2></div><button class="reader-options-close" id="reader-options-close" type="button" aria-label="Close reader options">×</button></header>
+            <button class="reader-listen-row" id="reader-listen-toggle" type="button"><span><strong>Listen / Recitation</strong><small>Controls for this Surah</small></span><span aria-hidden="true">›</span></button>
           <section class="audio-player" id="audio-player" hidden aria-label="Maher Al-Muaiqly recitation player">
-            <div><p>RECITATION</p><label class="reciter-select"><select id="reciter-select" aria-label="Choose reciter"><option value="maher">Shaykh Maher Al‑Muaiqly</option><option value="abdul-basit">Abdul Basit Abdul Samad</option><option value="minshawi">Muhammad Siddiq al‑Minshawi</option></select></label><small id="audio-status">Preparing audio…</small></div>
-            <audio id="recitation-audio" controls preload="none"></audio>
+            <header class="audio-popover-header"><div><p>LISTEN / RECITATION</p><h2>Listen</h2></div><button class="audio-popover-close" id="audio-popover-close" type="button" aria-label="Close recitation controls">×</button></header>
+            <div class="recitation-details"><p>RECITATION</p><label class="reciter-select"><select id="reciter-select" aria-label="Choose reciter"><option value="maher">Shaykh Maher Al‑Muaiqly</option><option value="abdul-basit">Abdul Basit Abdul Samad</option><option value="minshawi">Muhammad Siddiq al‑Minshawi</option></select></label><small id="audio-status">Preparing audio…</small></div>
+            <audio id="recitation-audio" preload="none"></audio>
+            <div class="custom-audio-controls" aria-label="Recitation playback controls">
+              <button class="audio-play-pause" id="audio-play-pause" type="button" aria-label="Play recitation">▶</button>
+              <time class="audio-time" id="audio-current-time">0:00</time>
+              <input class="audio-seek" id="audio-seek" type="range" min="0" max="0" value="0" step="0.1" aria-label="Seek through recitation" disabled />
+              <time class="audio-time" id="audio-duration">0:00</time>
+            </div>
           </section>
 
           <section class="controls" aria-label="Reading controls">
@@ -76,12 +128,14 @@
             </div>
             <div class="type-controls">
               <button class="tajweed-toggle" id="tajweed-toggle" aria-pressed="true">Tajweed colours</button>
-              <span>Text size</span>
+              <span class="text-size-label">Text size</span>
               <button class="size-button" data-size="down" aria-label="Decrease Arabic text size">A−</button>
-              <input class="size-slider" id="size-slider" type="range" min="30" max="58" value="42" aria-label="Arabic text size" />
+              <input class="size-slider" id="size-slider" type="range" min="16" max="64" value="42" aria-label="Arabic text size" />
               <button class="size-button" data-size="up" aria-label="Increase Arabic text size">A+</button>
             </div>
           </section>
+          </section>
+          <section class="reader-audio-panel" id="reader-audio-panel" hidden aria-label="Recitation controls"><div id="reader-audio-slot"></div></section></div>
 
           <article class="quran-page" aria-label="Surah Al-Fatihah">
             <div class="ornament" id="bismillah"><span></span><b>بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</b><span></span></div>
@@ -89,6 +143,7 @@
           </article>
           <div class="source-note">Arabic: IndoPak script · Translation: Sahih International · Transliteration: AlQuran Cloud</div>
           <div class="chapter-nav"><button id="previous-surah">← Previous</button><button id="next-surah">Next →</button></div>
+          </div>
         </section>
       </main>
     </div>
@@ -108,7 +163,16 @@
       if (location.protocol === 'file:') location.replace('http://127.0.0.1:4173');
     </script>
     <script>
-      if ('serviceWorker' in navigator) {
+      // Capacitor bundles these files inside the iOS app, so no service worker is
+      // required (or relied on) for offline reading there. Safari/PWA still uses
+      // the service worker for its offline cache.
+      const isNativeCapacitor = window.Capacitor?.isNativePlatform?.() || location.protocol === 'capacitor:';
+      const isNativeIOS = isNativeCapacitor && (window.Capacitor?.getPlatform?.() === 'ios' || /iPhone|iPad|iPod/i.test(navigator.userAgent));
+      if (isNativeIOS) {
+        document.documentElement.classList.add('capacitor-ios');
+        document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+      }
+      if (!isNativeCapacitor && 'serviceWorker' in navigator) {
         window.quranOfflineReady = navigator.serviceWorker.register('/service-worker.js', {
           scope: '/',
           updateViaCache: 'none',
