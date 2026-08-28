@@ -1,8 +1,9 @@
 /* Offline-first PWA cache. Bump this version whenever bundled files change. */
-const CACHE_VERSION = 'quran-reader-v40';
+const CACHE_VERSION = 'quran-reader-v41';
 const CACHE_NAME = `${CACHE_VERSION}-precache`;
 const CACHE_PREFIX = 'quran-reader-';
-const AUDIO_CACHE_NAME = 'quran-reader-audio-v2';
+const AUDIO_CACHE_NAME = 'quran-reader-audio-v3';
+const AUDIO_CACHE_VALIDITY_MS = 7 * 24 * 60 * 60 * 1000;
 const APP_SHELL = '/index.html';
 const PRECACHE_URLS = [
   '/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest',
@@ -28,6 +29,13 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+function cachedAudioIsCurrent(response) {
+  const downloadedAt = Date.parse(response?.headers?.get('X-Nur-Audio-Downloaded-At') || '');
+  return Number.isFinite(downloadedAt)
+    && downloadedAt <= Date.now()
+    && Date.now() - downloadedAt < AUDIO_CACHE_VALIDITY_MS;
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -35,13 +43,17 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // QF metadata and streamed audio must never enter the general app-shell
-  // cache. Offline MP3s are inserted deliberately by the app only after a
-  // Content Sync validation, using the dedicated audio cache below.
+  // cache. The app deliberately inserts offline MP3s into the dedicated cache
+  // with a fresh-download timestamp; no audio cache entry survives past 7 days.
   if (url.pathname.startsWith('/api/qf/')) {
     if (/^\/api\/qf\/chapter-audio\/\d+\/\d+\/file$/.test(url.pathname)) {
-      event.respondWith((async () => (
-        (await caches.open(AUDIO_CACHE_NAME)).match(request) || fetch(request)
-      ))());
+      event.respondWith((async () => {
+        const cache = await caches.open(AUDIO_CACHE_NAME);
+        const cached = await cache.match(request);
+        if (cached && cachedAudioIsCurrent(cached)) return cached;
+        if (cached) await cache.delete(request);
+        return fetch(request);
+      })());
     }
     return;
   }
