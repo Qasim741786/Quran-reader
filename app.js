@@ -38,6 +38,9 @@ const QF_CHAPTER_RECITER_IDS = Object.freeze({ maher: 159, 'abdul-basit': 1, min
 const QF_WORKER_ORIGIN = 'https://quran-reader.muhammedwaheed741.workers.dev';
 let preparedAudioSurah = 0;
 let reciter = localStorage.getItem('quran-reciter') || 'maher';
+const PLAYBACK_SPEEDS = new Set([0.75, 1, 1.25, 1.5, 2]);
+let playbackSpeed = Number(localStorage.getItem('quran-playback-speed')) || 1;
+if (!PLAYBACK_SPEEDS.has(playbackSpeed)) playbackSpeed = 1;
 let highlightedAyah = 0;
 let activeAudioSource = null;
 let nativeAudioPlugins = null;
@@ -523,7 +526,7 @@ function openUtilityPanel(section) {
 
   if (section === 'settings') {
     const reciterOptions = Array.from($('#reciter-select').options).map((option) => `<option value="${option.value}" ${option.value === reciter ? 'selected' : ''}>${escapeHtml(option.textContent)}</option>`).join('');
-    panel.innerHTML = `<header class="utility-header"><div><p class="eyebrow">READER PREFERENCES</p><h2>Settings</h2></div><button class="utility-close" aria-label="Close settings">×</button></header><div class="settings-list"><label>Theme<select id="setting-theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Default reading mode<select id="setting-mode"><option value="both">Arabic &amp; translation</option><option value="arabic">Arabic only</option><option value="transliteration">Arabic &amp; transliteration</option><option value="tafsir">Tafsir</option></select></label><label class="setting-toggle">Tajweed colours<input id="setting-tajweed" type="checkbox" ${tajweedEnabled ? 'checked' : ''} /></label><label>Quran font size <output id="setting-size-output">${size}px</output><input id="setting-size" type="range" min="${ARABIC_SIZE_MIN}" max="${ARABIC_SIZE_MAX}" value="${size}" /></label><label>Preferred reciter<select id="setting-reciter">${reciterOptions}</select></label></div>`;
+    panel.innerHTML = `<header class="utility-header"><div><p class="eyebrow">READER PREFERENCES</p><h2>Settings</h2></div><button class="utility-close" aria-label="Close settings">×</button></header><div class="settings-list"><label>Theme<select id="setting-theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Default reading mode<select id="setting-mode"><option value="both">Arabic &amp; translation</option><option value="arabic">Arabic only</option><option value="transliteration">Arabic &amp; transliteration</option><option value="tafsir">Tafsir</option></select></label><label class="setting-toggle">Tajweed colours<input id="setting-tajweed" type="checkbox" ${tajweedEnabled ? 'checked' : ''} /></label><label>Quran font size <output id="setting-size-output">${size}px</output><input id="setting-size" type="range" min="${ARABIC_SIZE_MIN}" max="${ARABIC_SIZE_MAX}" value="${size}" /></label><label>Preferred reciter<select id="setting-reciter">${reciterOptions}</select></label><label>Recitation speed<select id="setting-playback-speed"><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option></select></label></div>`;
     $('#setting-theme').value = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
     $('#setting-mode').value = readingMode;
     $('#setting-theme').onchange = (event) => setTheme(event.target.value === 'dark');
@@ -531,6 +534,8 @@ function openUtilityPanel(section) {
     $('#setting-tajweed').onchange = (event) => setTajweedEnabled(event.target.checked);
     $('#setting-size').oninput = (event) => { setArabicSize(event.target.value); $('#setting-size-output').textContent = `${size}px`; };
     $('#setting-reciter').onchange = (event) => { $('#reciter-select').value = event.target.value; $('#reciter-select').dispatchEvent(new Event('change')); };
+    $('#setting-playback-speed').value = String(playbackSpeed);
+    $('#setting-playback-speed').onchange = (event) => setPlaybackSpeed(event.target.value);
   }
 
   if (section === 'about') {
@@ -630,8 +635,22 @@ function formatAudioTime(seconds) {
   return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, '0')}`;
 }
 
+function setPlaybackSpeed(nextSpeed) {
+  const speed = Number(nextSpeed);
+  playbackSpeed = PLAYBACK_SPEEDS.has(speed) ? speed : 1;
+  localStorage.setItem('quran-playback-speed', String(playbackSpeed));
+  const audio = $('#recitation-audio');
+  audio.defaultPlaybackRate = playbackSpeed;
+  audio.playbackRate = playbackSpeed;
+  $('#playback-speed-select').value = String(playbackSpeed);
+  const settingsSelector = $('#setting-playback-speed');
+  if (settingsSelector) settingsSelector.value = String(playbackSpeed);
+}
+
 function resetAudioControls() {
   const audio = $('#recitation-audio');
+  audio.defaultPlaybackRate = playbackSpeed;
+  audio.playbackRate = playbackSpeed;
   $('#audio-play-pause').textContent = '▶';
   $('#audio-play-pause').setAttribute('aria-label', 'Play recitation');
   // This control prepares the source on its first press, so it must remain
@@ -647,6 +666,7 @@ function resetAudioControls() {
 
 function syncAudioControls() {
   const audio = $('#recitation-audio');
+  if (audio.playbackRate !== playbackSpeed) audio.playbackRate = playbackSpeed;
   const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
   const seek = $('#audio-seek');
   $('#audio-play-pause').disabled = false;
@@ -1538,4 +1558,6 @@ document.addEventListener('visibilitychange', () => {
 const darkMode = localStorage.getItem('quran-dark-mode') === 'true';
 setTheme(darkMode);
 $$('[data-theme-toggle]').forEach((button) => button.addEventListener('click', () => setTheme(!document.body.classList.contains('dark-mode'))));
+$('#playback-speed-select').onchange = (event) => setPlaybackSpeed(event.target.value);
+setPlaybackSpeed(playbackSpeed);
 initialise();

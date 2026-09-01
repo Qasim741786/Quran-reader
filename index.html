@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="Nur" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/assets/icon-180.png" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=42" />
     <title>Nur | Read · Listen · Reflect</title>
   </head>
   <body>
@@ -117,6 +117,7 @@
               <input class="audio-seek" id="audio-seek" type="range" min="0" max="0" value="0" step="0.1" aria-label="Seek through recitation" disabled />
               <time class="audio-time" id="audio-duration">0:00</time>
             </div>
+            <label class="playback-speed-control">Speed<select id="playback-speed-select" aria-label="Recitation playback speed"><option value="0.75">0.75x</option><option value="1">1x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="2">2x</option></select></label>
           </section>
 
           <section class="controls" aria-label="Reading controls">
@@ -173,7 +174,7 @@
         document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
       }
       if (!isNativeCapacitor && 'serviceWorker' in navigator) {
-        window.quranOfflineReady = navigator.serviceWorker.register('/service-worker.js', {
+        window.quranOfflineReady = navigator.serviceWorker.register('/service-worker.js?v=42', {
           scope: '/',
           updateViaCache: 'none',
         }).then((registration) => {
@@ -189,6 +190,6 @@
         });
       }
     </script>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=42"></script>
   </body>
 </html>

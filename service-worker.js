@@ -1,5 +1,5 @@
 /* Offline-first PWA cache. Bump this version whenever bundled files change. */
-const CACHE_VERSION = 'quran-reader-v41';
+const CACHE_VERSION = 'quran-reader-v42';
 const CACHE_NAME = `${CACHE_VERSION}-precache`;
 const CACHE_PREFIX = 'quran-reader-';
 const AUDIO_CACHE_NAME = 'quran-reader-audio-v3';
